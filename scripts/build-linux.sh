@@ -93,6 +93,8 @@ fi
 
 # Build project
 info "Compiling project..."
+# Set environment variables for cross-compilation to avoid OpenSSL issues
+export OPENSSL_NO_PKG_CONFIG=1
 cargo build --release --target "$TARGET"
 
 BINARY_PATH="target/$TARGET/release/${PROJECT_NAME}"
