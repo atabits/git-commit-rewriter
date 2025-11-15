@@ -162,6 +162,24 @@ jobs:
       - name: Setup Rust
         run: rustc --version && cargo --version
 
+      - name: Install cross-compiler for Linux
+        run: |
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            if ! command -v x86_64-linux-gnu-gcc &> /dev/null && ! command -v x86_64-linux-musl-gcc &> /dev/null; then
+              echo "Installing cross-compiler for Linux..."
+              if command -v brew &> /dev/null; then
+                # Try installing musl-cross as it's easier to set up
+                brew tap filosottile/musl-cross || true
+                brew install filosottile/musl-cross/musl-cross || {
+                  echo "⚠️  Warning: Failed to install musl-cross"
+                  echo "libz-sys will attempt to build from source with static feature"
+                }
+              fi
+            else
+              echo "✅ Cross-compiler already installed"
+            fi
+          fi
+
       - name: Make scripts executable
         run: chmod +x scripts/*.sh
 

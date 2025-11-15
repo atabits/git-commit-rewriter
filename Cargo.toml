@@ -9,7 +9,7 @@ license = "MIT"
 [dependencies]
 eframe = "0.28"
 egui = "0.28"
-git2 = { version = "0.19", features = ["vendored-openssl"] }
+git2 = { version = "0.19", features = ["vendored-libgit2"] }
 chrono = "0.4"
 rfd = "0.14"
 anyhow = "1.0"

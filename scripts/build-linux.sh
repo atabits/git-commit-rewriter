@@ -91,10 +91,33 @@ else
     rustup target add "$TARGET"
 fi
 
+# Check and install cross-compiler for Linux (if on macOS)
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # Check for Linux cross-compiler
+    if command -v x86_64-linux-gnu-gcc &> /dev/null; then
+        info "✅ Found Linux cross-compiler"
+        export CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc
+    elif command -v x86_64-linux-musl-gcc &> /dev/null; then
+        info "✅ Found musl cross-compiler (using for gnu target)"
+        export CC_x86_64_unknown_linux_gnu=x86_64-linux-musl-gcc
+    else
+        warn "Cross-compiler not found. Attempting to install..."
+        if command -v brew &> /dev/null; then
+            # Try installing via crosstool-ng or other methods
+            # For now, we'll try to use the system compiler with proper flags
+            warn "No cross-compiler found. libz-sys will try to build from source."
+            warn "This may require additional setup. Consider installing:"
+            warn "  brew install filosottile/musl-cross/musl-cross"
+            warn "  or install a proper Linux cross-compilation toolchain"
+        else
+            warn "Homebrew not found. Please install a cross-compiler manually"
+        fi
+    fi
+fi
+
 # Build project
 info "Compiling project..."
-# Set environment variables for cross-compilation to avoid OpenSSL issues
-export OPENSSL_NO_PKG_CONFIG=1
+# vendored-libgit2 feature will build everything from source, no need for system libs
 cargo build --release --target "$TARGET"
 
 BINARY_PATH="target/$TARGET/release/${PROJECT_NAME}"
