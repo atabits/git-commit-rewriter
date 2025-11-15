@@ -18,6 +18,7 @@ pub struct CommitRewriterApp {
     pub commits_limit: usize,
     pub commits_loaded: usize,
     pub loading_more: bool,
+    pub has_more_commits: bool,
 
     pub new_message: String,
 
@@ -51,6 +52,7 @@ impl Default for CommitRewriterApp {
             commits_limit: 50,
             commits_loaded: 0,
             loading_more: false,
+            has_more_commits: true,
 
             new_message: String::new(),
 
@@ -247,14 +249,19 @@ impl CommitRewriterApp {
                         needs_repaint = true;
                     }
                     BackgroundMessage::CommitsLoaded(commits) => {
+                        let loaded_count = commits.len();
                         if self.loading_more {
                             self.commits.extend(commits);
                             self.commits_loaded = self.commits.len();
                             self.loading_more = false;
+                            // If we loaded less than requested, there are no more commits
+                            self.has_more_commits = loaded_count >= 50;
                         } else {
                             self.commits = commits;
                             self.commits_loaded = self.commits.len();
                             self.commits_limit = self.commits_loaded;
+                            // If we loaded less than the limit, there are no more commits
+                            self.has_more_commits = self.commits_loaded >= self.commits_limit;
                         }
                         self.filtered_count = self.commits.len();
                         needs_repaint = true;
@@ -409,6 +416,7 @@ impl eframe::App for CommitRewriterApp {
                     &mut self.search_query,
                     self.is_processing,
                     self.loading_more,
+                    self.has_more_commits,
                 );
 
                 if let Some((index, short_hash, message)) = commits_result.selected_commit {

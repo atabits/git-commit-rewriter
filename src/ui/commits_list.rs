@@ -14,6 +14,7 @@ pub fn render_commits_list(
     search_query: &mut String,
     is_processing: bool,
     loading_more: bool,
+    has_more_commits: bool,
 ) -> CommitsListResult {
     let mut result = CommitsListResult {
         selected_commit: None,
@@ -143,34 +144,37 @@ pub fn render_commits_list(
                         ));
                     }
 
-                    ui.add_space(3.0);
-                    ui.separator();
-                    ui.add_space(3.0);
+                    // Only show "Load more" button if there are potentially more commits
+                    if has_more_commits {
+                        ui.add_space(3.0);
+                        ui.separator();
+                        ui.add_space(3.0);
 
-                    ui.centered_and_justified(|ui| {
-                        if loading_more {
-                            ui.horizontal(|ui| {
-                                ui.spinner();
-                                ui.label(
-                                    egui::RichText::new("Loading...")
-                                        .size(11.0)
-                                        .color(egui::Color32::GRAY),
+                        ui.centered_and_justified(|ui| {
+                            if loading_more {
+                                ui.horizontal(|ui| {
+                                    ui.spinner();
+                                    ui.label(
+                                        egui::RichText::new("Loading...")
+                                            .size(11.0)
+                                            .color(egui::Color32::GRAY),
+                                    );
+                                });
+                            } else {
+                                let load_more_btn = egui::Button::new(
+                                    egui::RichText::new("⬇ Load 50 more commits").size(12.0),
                                 );
-                            });
-                        } else {
-                            let load_more_btn = egui::Button::new(
-                                egui::RichText::new("⬇ Load 50 more commits").size(12.0),
-                            );
 
-                            if ui
-                                .add_enabled(!is_processing, load_more_btn)
-                                .on_hover_text("Load next 50 commits")
-                                .clicked()
-                            {
-                                result.load_more_clicked = true;
+                                if ui
+                                    .add_enabled(!is_processing, load_more_btn)
+                                    .on_hover_text("Load next 50 commits")
+                                    .clicked()
+                                {
+                                    result.load_more_clicked = true;
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
                 }
             }
         });
