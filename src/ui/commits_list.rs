@@ -112,17 +112,23 @@ pub fn render_commits_list(
                         let i = *original_index;
                         let is_selected = selected_index == Some(i);
 
-                        let full_text = format!("{} │ {} │ {}", commit.short_hash, commit.date, commit.message);
-                        
+                        let full_text = format!(
+                            "{} │ {} │ {}",
+                            commit.short_hash, commit.date, commit.message
+                        );
+
                         // Create selectable with highlighted matches
                         let response = if !search_query.trim().is_empty() {
-                            render_selectable_with_highlight(ui, is_selected, &full_text, search_query)
+                            render_selectable_with_highlight(
+                                ui,
+                                is_selected,
+                                &full_text,
+                                search_query,
+                            )
                         } else {
                             ui.selectable_label(
                                 is_selected,
-                                egui::RichText::new(&full_text)
-                                    .monospace()
-                                    .size(11.0),
+                                egui::RichText::new(&full_text).monospace().size(11.0),
                             )
                         };
 
@@ -197,11 +203,11 @@ fn render_selectable_with_highlight(
 ) -> egui::Response {
     let query_lower = query.to_lowercase();
     let text_lower = text.to_lowercase();
-    
+
     // Find all match positions
     let mut matches = Vec::new();
     let mut search_start = 0;
-    
+
     while let Some(pos) = text_lower[search_start..].find(&query_lower) {
         let actual_pos = search_start + pos;
         matches.push((actual_pos, actual_pos + query.len()));
@@ -218,7 +224,7 @@ fn render_selectable_with_highlight(
     // Create a custom selectable widget with highlighted text
     let button_padding = ui.style().spacing.button_padding;
     let text_height = ui.text_style_height(&egui::TextStyle::Monospace);
-    
+
     let (rect, response) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), text_height + button_padding.y * 2.0),
         egui::Sense::click(),
@@ -261,7 +267,7 @@ fn render_selectable_with_highlight(
                 .x
             });
         }
-        
+
         // Render highlighted match
         let segment = &text[start..end];
         let highlight_rect = egui::Rect::from_min_size(
@@ -279,11 +285,8 @@ fn render_selectable_with_highlight(
                 ui.text_style_height(&egui::TextStyle::Monospace),
             ),
         );
-        ui.painter().rect_filled(
-            highlight_rect,
-            0.0,
-            egui::Color32::from_rgb(255, 255, 0),
-        );
+        ui.painter()
+            .rect_filled(highlight_rect, 0.0, egui::Color32::from_rgb(255, 255, 0));
         ui.painter().text(
             egui::pos2(current_x, text_pos.y),
             egui::Align2::LEFT_TOP,
@@ -292,7 +295,7 @@ fn render_selectable_with_highlight(
             egui::Color32::BLACK,
         );
         current_x += highlight_rect.width();
-        
+
         last_end = end;
     }
 
