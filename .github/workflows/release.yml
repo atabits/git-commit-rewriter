@@ -112,8 +112,7 @@ jobs:
         run: chmod +x scripts/*.sh
 
       - name: Build Windows EXE
-        run: |
-          RUSTFLAGS="-C link-arg=-Wl,--subsystem,windows" ./scripts/build-windows.sh
+        run: ./scripts/build-windows.sh
         env:
           VERSION: ${{ steps.version.outputs.VERSION }}
         continue-on-error: true
