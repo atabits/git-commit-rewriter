@@ -144,94 +144,11 @@ jobs:
           path: ${{ steps.verify_zip.outputs.ZIP_FILE }}
           retention-days: 7
 
-  # Build Linux
-  build-linux:
-    name: Build Linux
-    runs-on: self-hosted
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Get version from tag
-        id: version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "Building version: $VERSION"
-
-      - name: Setup Rust
-        run: rustc --version && cargo --version
-
-      - name: Install cross-compiler for Linux
-        run: |
-          if [[ "$OSTYPE" == "darwin"* ]]; then
-            if ! command -v x86_64-linux-gnu-gcc &> /dev/null && ! command -v x86_64-linux-musl-gcc &> /dev/null; then
-              echo "Installing cross-compiler for Linux..."
-              if command -v brew &> /dev/null; then
-                # Try installing musl-cross as it's easier to set up
-                brew tap filosottile/musl-cross || true
-                brew install filosottile/musl-cross/musl-cross || {
-                  echo "⚠️  Warning: Failed to install musl-cross"
-                  echo "libz-sys will attempt to build from source with static feature"
-                }
-              fi
-            else
-              echo "✅ Cross-compiler already installed"
-            fi
-          fi
-
-      - name: Make scripts executable
-        run: chmod +x scripts/*.sh
-
-      - name: Build Linux x86_64
-        run: ./scripts/build-linux.sh x86_64
-        env:
-          VERSION: ${{ steps.version.outputs.VERSION }}
-
-      - name: Build Linux ARM64
-        run: ./scripts/build-linux.sh arm64
-        env:
-          VERSION: ${{ steps.version.outputs.VERSION }}
-        continue-on-error: true
-
-      - name: Verify Linux files
-        id: verify_linux
-        run: |
-          APPIMAGE_X86_64=$(find releases -name "*x86_64.AppImage" -type f | head -1)
-          APPIMAGE_ARM64=$(find releases -name "*arm64.AppImage" -type f | head -1)
-          
-          if [ -z "$APPIMAGE_X86_64" ]; then
-            echo "❌ Error: Linux x86_64 AppImage file not found"
-            exit 1
-          fi
-          
-          echo "APPIMAGE_X86_64=$APPIMAGE_X86_64" >> $GITHUB_OUTPUT
-          echo "✅ Linux x86_64: $APPIMAGE_X86_64"
-          ls -lh "$APPIMAGE_X86_64"
-          
-          if [ -n "$APPIMAGE_ARM64" ]; then
-            echo "APPIMAGE_ARM64=$APPIMAGE_ARM64" >> $GITHUB_OUTPUT
-            echo "✅ Linux ARM64: $APPIMAGE_ARM64"
-            ls -lh "$APPIMAGE_ARM64"
-          else
-            echo "APPIMAGE_ARM64=" >> $GITHUB_OUTPUT
-            echo "⚠️  Linux ARM64 not available"
-          fi
-
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-binaries
-          path: |
-            releases/*x86_64.AppImage
-            releases/*arm64.AppImage
-          retention-days: 7
-
   # Create GitHub Release
   create-release:
     name: Create GitHub Release
     runs-on: self-hosted
-    needs: [build-macos, build-windows, build-linux]
+    needs: [build-macos, build-windows]
     permissions:
       contents: write
     steps:
@@ -258,20 +175,11 @@ jobs:
           path: artifacts/
         continue-on-error: true
 
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-binaries
-          path: artifacts/
-        continue-on-error: true
-
       - name: Prepare release files
         id: prepare_files
         run: |
           DMG_FILE=$(find artifacts -name "*.dmg" -type f | head -1)
           ZIP_FILE=$(find artifacts -name "*.zip" -type f | head -1)
-          APPIMAGE_X86_64=$(find artifacts -name "*x86_64.AppImage" -type f | head -1)
-          APPIMAGE_ARM64=$(find artifacts -name "*arm64.AppImage" -type f | head -1)
           
           if [ -z "$DMG_FILE" ]; then
             echo "❌ Error: DMG file not found in artifacts"
@@ -289,24 +197,6 @@ jobs:
           else
             echo "ZIP_FILE=" >> $GITHUB_OUTPUT
             echo "⚠️  Windows ZIP not available (cross-compilation may have failed)"
-          fi
-          
-          if [ -n "$APPIMAGE_X86_64" ]; then
-            echo "APPIMAGE_X86_64=$APPIMAGE_X86_64" >> $GITHUB_OUTPUT
-            echo "✅ Linux x86_64: $APPIMAGE_X86_64"
-            ls -lh "$APPIMAGE_X86_64"
-          else
-            echo "APPIMAGE_X86_64=" >> $GITHUB_OUTPUT
-            echo "⚠️  Linux x86_64 not available"
-          fi
-          
-          if [ -n "$APPIMAGE_ARM64" ]; then
-            echo "APPIMAGE_ARM64=$APPIMAGE_ARM64" >> $GITHUB_OUTPUT
-            echo "✅ Linux ARM64: $APPIMAGE_ARM64"
-            ls -lh "$APPIMAGE_ARM64"
-          else
-            echo "APPIMAGE_ARM64=" >> $GITHUB_OUTPUT
-            echo "⚠️  Linux ARM64 not available"
           fi
 
       - name: Generate release notes
@@ -328,8 +218,6 @@ jobs:
           
           - **macOS (Apple Silicon)**: [commit-rewriter-$VERSION-macos-arm64.dmg](https://github.com/${{ github.repository }}/releases/download/v$VERSION/commit-rewriter-$VERSION-macos-arm64.dmg)
           $([ -n "${{ steps.prepare_files.outputs.ZIP_FILE }}" ] && echo "- **Windows**: [commit-rewriter-$VERSION-windows-portable.zip](https://github.com/${{ github.repository }}/releases/download/v$VERSION/commit-rewriter-$VERSION-windows-portable.zip)" || echo "- **Windows**: Not available (cross-compilation failed)")
-          $([ -n "${{ steps.prepare_files.outputs.APPIMAGE_X86_64 }}" ] && echo "- **Linux (x86_64)**: [commit-rewriter-$VERSION-x86_64.AppImage](https://github.com/${{ github.repository }}/releases/download/v$VERSION/commit-rewriter-$VERSION-x86_64.AppImage)" || echo "- **Linux (x86_64)**: Not available")
-          $([ -n "${{ steps.prepare_files.outputs.APPIMAGE_ARM64 }}" ] && echo "- **Linux (ARM64)**: [commit-rewriter-$VERSION-arm64.AppImage](https://github.com/${{ github.repository }}/releases/download/v$VERSION/commit-rewriter-$VERSION-arm64.AppImage)" || echo "- **Linux (ARM64)**: Not available")
           
           ## Installation
           
@@ -347,13 +235,6 @@ jobs:
           2. Extract the archive
           3. Run \`Git Commit Rewriter.exe\`
           
-          ### Linux
-          1. Download the AppImage file for your architecture
-          2. Make it executable: \`chmod +x commit-rewriter-$VERSION-*.AppImage\`
-          3. Run: \`./commit-rewriter-$VERSION-*.AppImage\`
-          
-          **Note:** AppImage is portable and doesn't require installation. Just download, make executable, and run!
-          
           ---
           
           **Full Changelog**: $CHANGELOG_URL
@@ -365,8 +246,6 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           DMG_FILE="${{ steps.prepare_files.outputs.DMG_FILE }}"
           ZIP_FILE="${{ steps.prepare_files.outputs.ZIP_FILE }}"
-          APPIMAGE_X86_64="${{ steps.prepare_files.outputs.APPIMAGE_X86_64 }}"
-          APPIMAGE_ARM64="${{ steps.prepare_files.outputs.APPIMAGE_ARM64 }}"
           
           # Prepare files list for upload
           FILES_TO_UPLOAD=()
@@ -375,12 +254,6 @@ jobs:
           fi
           if [ -n "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
             FILES_TO_UPLOAD+=("$ZIP_FILE")
-          fi
-          if [ -n "$APPIMAGE_X86_64" ] && [ -f "$APPIMAGE_X86_64" ]; then
-            FILES_TO_UPLOAD+=("$APPIMAGE_X86_64")
-          fi
-          if [ -n "$APPIMAGE_ARM64" ] && [ -f "$APPIMAGE_ARM64" ]; then
-            FILES_TO_UPLOAD+=("$APPIMAGE_ARM64")
           fi
           
           if [ ${#FILES_TO_UPLOAD[@]} -eq 0 ]; then

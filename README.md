@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](https://github.com/atabits/commit-rewriter)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/atabits/commit-rewriter)
 
 > **Edit Git commit messages the easy way** — A beautiful, fast GUI app built with Rust
 
@@ -18,7 +18,7 @@
 - **🔍 Smart Search** — Find commits instantly by message, hash, or author
 - **🛡️ Safe by Default** — Automatic backups before any changes
 - **🔄 Easy Rollback** — Undo changes with a single click
-- **🌐 Cross-Platform** — Works on macOS, Linux, and Windows
+- **🌐 Cross-Platform** — Works on macOS and Windows
 
 ---
 
@@ -37,7 +37,7 @@ The app will be ready in `target/release/commit-rewriter` ✨
 ### Install Globally
 
 ```bash
-# macOS / Linux
+# macOS
 sudo cp target/release/commit-rewriter /usr/local/bin/
 
 # Now run from anywhere
@@ -96,9 +96,6 @@ cargo test
 ```bash
 # macOS (Apple Silicon)
 cargo build --release --target aarch64-apple-darwin
-
-# Linux
-cargo build --release --target x86_64-unknown-linux-gnu
 
 # Windows
 cargo build --release --target x86_64-pc-windows-gnu

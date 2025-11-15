@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to create .exe and archive for Windows (cross-compilation from macOS/Linux)
+# Script to create .exe and archive for Windows (cross-compilation from macOS)
 # Usage: ./build-windows.sh
 
 set -e
