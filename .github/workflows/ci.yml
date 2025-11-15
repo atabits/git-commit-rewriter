@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Quick compilation check
+  check:
+    name: Check Compilation
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        run: |
+          rustup component add rustfmt || true
+          rustc --version
+          cargo --version
+
+      - name: Check code compiles
+        run: cargo check --all-targets
+
+  # Formatting check
+  fmt:
+    name: Check Formatting
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        run: rustup component add rustfmt || true
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+  # Tests
+  test:
+    name: Run Tests
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        run: rustc --version && cargo --version
+
+      - name: Run tests
+        run: cargo test --verbose --all-targets

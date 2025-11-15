@@ -1,0 +1,445 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Only semantic versions: v1.0.0, v2.1.3, etc.
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Build macOS DMG
+  build-macos:
+    name: Build macOS DMG
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Setup Rust
+        run: rustc --version && cargo --version
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Build macOS DMG
+        run: ./scripts/build-macos-app.sh arm64
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+
+      - name: Verify DMG file
+        id: verify_dmg
+        run: |
+          DMG_FILE=$(find releases -name "*.dmg" -type f | head -1)
+          if [ -z "$DMG_FILE" ]; then
+            echo "❌ Error: DMG file not found"
+            exit 1
+          fi
+          echo "DMG_FILE=$DMG_FILE" >> $GITHUB_OUTPUT
+          echo "✅ DMG file found: $DMG_FILE"
+          ls -lh "$DMG_FILE"
+          # Verify file is not empty
+          if [ ! -s "$DMG_FILE" ]; then
+            echo "❌ Error: DMG file is empty"
+            exit 1
+          fi
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: ${{ steps.verify_dmg.outputs.DMG_FILE }}
+          retention-days: 7
+
+  # Build Windows EXE
+  build-windows:
+    name: Build Windows EXE
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Setup Rust
+        run: rustc --version && cargo --version
+
+      - name: Install MinGW for cross-compilation
+        run: |
+          if ! command -v x86_64-w64-mingw32-gcc &> /dev/null; then
+            echo "Installing MinGW..."
+            if command -v brew &> /dev/null; then
+              brew install mingw-w64 || {
+                echo "⚠️  Warning: Failed to install MinGW via Homebrew"
+                echo "Cross-compilation may fail. Install manually: brew install mingw-w64"
+              }
+            else
+              echo "⚠️  Warning: Homebrew not found. Install MinGW manually."
+            fi
+          else
+            echo "✅ MinGW already installed"
+            x86_64-w64-mingw32-gcc --version
+          fi
+
+      - name: Setup Rust Windows target
+        run: |
+          rustup target add x86_64-pc-windows-gnu || true
+          rustup target list --installed | grep windows || echo "⚠️  Windows target not installed"
+
+      - name: Configure cross-compilation
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml << EOF
+          [target.x86_64-pc-windows-gnu]
+          linker = "x86_64-w64-mingw32-gcc"
+          EOF
+          echo "✅ Cross-compilation configured"
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Build Windows EXE
+        run: |
+          RUSTFLAGS="-C link-arg=-Wl,--subsystem,windows" ./scripts/build-windows.sh
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        continue-on-error: true
+
+      - name: Verify Windows ZIP file
+        id: verify_zip
+        run: |
+          ZIP_FILE=$(find releases -name "*windows-portable.zip" -type f | head -1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "⚠️  Warning: Windows ZIP file not found"
+            echo "This may be due to missing MinGW or cross-compilation failure"
+            echo "ZIP_FILE=" >> $GITHUB_OUTPUT
+            exit 0  # Don't fail the job, but mark as optional
+          fi
+          echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_OUTPUT
+          echo "✅ Windows ZIP file found: $ZIP_FILE"
+          ls -lh "$ZIP_FILE"
+          if [ ! -s "$ZIP_FILE" ]; then
+            echo "❌ Error: ZIP file is empty"
+            exit 1
+          fi
+
+      - name: Upload Windows ZIP artifact
+        if: steps.verify_zip.outputs.ZIP_FILE != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: ${{ steps.verify_zip.outputs.ZIP_FILE }}
+          retention-days: 7
+
+  # Build Linux
+  build-linux:
+    name: Build Linux
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Setup Rust
+        run: rustc --version && cargo --version
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Build Linux x86_64
+        run: ./scripts/build-linux.sh x86_64
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+
+      - name: Build Linux ARM64
+        run: ./scripts/build-linux.sh arm64
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        continue-on-error: true
+
+      - name: Verify Linux files
+        id: verify_linux
+        run: |
+          APPIMAGE_X86_64=$(find releases -name "*x86_64.AppImage" -type f | head -1)
+          APPIMAGE_ARM64=$(find releases -name "*arm64.AppImage" -type f | head -1)
+          
+          if [ -z "$APPIMAGE_X86_64" ]; then
+            echo "❌ Error: Linux x86_64 AppImage file not found"
+            exit 1
+          fi
+          
+          echo "APPIMAGE_X86_64=$APPIMAGE_X86_64" >> $GITHUB_OUTPUT
+          echo "✅ Linux x86_64: $APPIMAGE_X86_64"
+          ls -lh "$APPIMAGE_X86_64"
+          
+          if [ -n "$APPIMAGE_ARM64" ]; then
+            echo "APPIMAGE_ARM64=$APPIMAGE_ARM64" >> $GITHUB_OUTPUT
+            echo "✅ Linux ARM64: $APPIMAGE_ARM64"
+            ls -lh "$APPIMAGE_ARM64"
+          else
+            echo "APPIMAGE_ARM64=" >> $GITHUB_OUTPUT
+            echo "⚠️  Linux ARM64 not available"
+          fi
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries
+          path: |
+            releases/*x86_64.AppImage
+            releases/*arm64.AppImage
+          retention-days: 7
+
+  # Create GitHub Release
+  create-release:
+    name: Create GitHub Release
+    runs-on: self-hosted
+    needs: [build-macos, build-windows, build-linux]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Creating release for version: $VERSION"
+
+      - name: Download macOS DMG artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: artifacts/
+
+      - name: Download Windows ZIP artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-exe
+          path: artifacts/
+        continue-on-error: true
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-binaries
+          path: artifacts/
+        continue-on-error: true
+
+      - name: Prepare release files
+        id: prepare_files
+        run: |
+          DMG_FILE=$(find artifacts -name "*.dmg" -type f | head -1)
+          ZIP_FILE=$(find artifacts -name "*.zip" -type f | head -1)
+          APPIMAGE_X86_64=$(find artifacts -name "*x86_64.AppImage" -type f | head -1)
+          APPIMAGE_ARM64=$(find artifacts -name "*arm64.AppImage" -type f | head -1)
+          
+          if [ -z "$DMG_FILE" ]; then
+            echo "❌ Error: DMG file not found in artifacts"
+            exit 1
+          fi
+          
+          echo "DMG_FILE=$DMG_FILE" >> $GITHUB_OUTPUT
+          echo "✅ DMG: $DMG_FILE"
+          ls -lh "$DMG_FILE"
+          
+          if [ -n "$ZIP_FILE" ]; then
+            echo "ZIP_FILE=$ZIP_FILE" >> $GITHUB_OUTPUT
+            echo "✅ ZIP: $ZIP_FILE"
+            ls -lh "$ZIP_FILE"
+          else
+            echo "ZIP_FILE=" >> $GITHUB_OUTPUT
+            echo "⚠️  Windows ZIP not available (cross-compilation may have failed)"
+          fi
+          
+          if [ -n "$APPIMAGE_X86_64" ]; then
+            echo "APPIMAGE_X86_64=$APPIMAGE_X86_64" >> $GITHUB_OUTPUT
+            echo "✅ Linux x86_64: $APPIMAGE_X86_64"
+            ls -lh "$APPIMAGE_X86_64"
+          else
+            echo "APPIMAGE_X86_64=" >> $GITHUB_OUTPUT
+            echo "⚠️  Linux x86_64 not available"
+          fi
+          
+          if [ -n "$APPIMAGE_ARM64" ]; then
+            echo "APPIMAGE_ARM64=$APPIMAGE_ARM64" >> $GITHUB_OUTPUT
+            echo "✅ Linux ARM64: $APPIMAGE_ARM64"
+            ls -lh "$APPIMAGE_ARM64"
+          else
+            echo "APPIMAGE_ARM64=" >> $GITHUB_OUTPUT
+            echo "⚠️  Linux ARM64 not available"
+          fi
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          # Get previous tag for changelog
+          PREVIOUS_TAG=$(git tag --sort=-v:refname | sed -n '2p' || echo "")
+          if [ -z "$PREVIOUS_TAG" ]; then
+            CHANGELOG_URL="https://github.com/${{ github.repository }}/releases/tag/v$VERSION"
+          else
+            CHANGELOG_URL="https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...v$VERSION"
+          fi
+          
+          cat > release_notes.md << EOF
+          # Release v$VERSION
+          
+          ## Downloads
+          
+          - **macOS (Apple Silicon)**: [commit-rewriter-$VERSION-macos-arm64.dmg](https://github.com/${{ github.repository }}/releases/download/v$VERSION/commit-rewriter-$VERSION-macos-arm64.dmg)
+          $([ -n "${{ steps.prepare_files.outputs.ZIP_FILE }}" ] && echo "- **Windows**: [commit-rewriter-$VERSION-windows-portable.zip](https://github.com/${{ github.repository }}/releases/download/v$VERSION/commit-rewriter-$VERSION-windows-portable.zip)" || echo "- **Windows**: Not available (cross-compilation failed)")
+          $([ -n "${{ steps.prepare_files.outputs.APPIMAGE_X86_64 }}" ] && echo "- **Linux (x86_64)**: [commit-rewriter-$VERSION-x86_64.AppImage](https://github.com/${{ github.repository }}/releases/download/v$VERSION/commit-rewriter-$VERSION-x86_64.AppImage)" || echo "- **Linux (x86_64)**: Not available")
+          $([ -n "${{ steps.prepare_files.outputs.APPIMAGE_ARM64 }}" ] && echo "- **Linux (ARM64)**: [commit-rewriter-$VERSION-arm64.AppImage](https://github.com/${{ github.repository }}/releases/download/v$VERSION/commit-rewriter-$VERSION-arm64.AppImage)" || echo "- **Linux (ARM64)**: Not available")
+          
+          ## Installation
+          
+          ### macOS
+          1. Download the DMG file
+          2. Open the DMG and drag the app to Applications
+          3. If you see a "damaged" error, open Terminal and run:
+             \`\`\`bash
+             xattr -d com.apple.quarantine /Applications/Git\ Commit\ Rewriter.app
+             \`\`\`
+          4. Run from Applications
+          
+          ### Windows
+          1. Download the ZIP file
+          2. Extract the archive
+          3. Run \`Git Commit Rewriter.exe\`
+          
+          ### Linux
+          1. Download the AppImage file for your architecture
+          2. Make it executable: \`chmod +x commit-rewriter-$VERSION-*.AppImage\`
+          3. Run: \`./commit-rewriter-$VERSION-*.AppImage\`
+          
+          **Note:** AppImage is portable and doesn't require installation. Just download, make executable, and run!
+          
+          ---
+          
+          **Full Changelog**: $CHANGELOG_URL
+          EOF
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          DMG_FILE="${{ steps.prepare_files.outputs.DMG_FILE }}"
+          ZIP_FILE="${{ steps.prepare_files.outputs.ZIP_FILE }}"
+          APPIMAGE_X86_64="${{ steps.prepare_files.outputs.APPIMAGE_X86_64 }}"
+          APPIMAGE_ARM64="${{ steps.prepare_files.outputs.APPIMAGE_ARM64 }}"
+          
+          # Prepare files list for upload
+          FILES_TO_UPLOAD=()
+          if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
+            FILES_TO_UPLOAD+=("$DMG_FILE")
+          fi
+          if [ -n "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
+            FILES_TO_UPLOAD+=("$ZIP_FILE")
+          fi
+          if [ -n "$APPIMAGE_X86_64" ] && [ -f "$APPIMAGE_X86_64" ]; then
+            FILES_TO_UPLOAD+=("$APPIMAGE_X86_64")
+          fi
+          if [ -n "$APPIMAGE_ARM64" ] && [ -f "$APPIMAGE_ARM64" ]; then
+            FILES_TO_UPLOAD+=("$APPIMAGE_ARM64")
+          fi
+          
+          if [ ${#FILES_TO_UPLOAD[@]} -eq 0 ]; then
+            echo "❌ Error: No files to upload"
+            exit 1
+          fi
+          
+          echo "Files to upload: ${FILES_TO_UPLOAD[@]}"
+          
+          # Try GitHub CLI first
+          if command -v gh &> /dev/null; then
+            echo "Using GitHub CLI..."
+            gh auth status || gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+            
+            if gh release create "v$VERSION" \
+              --title "Release v$VERSION" \
+              --notes-file release_notes.md \
+              "${FILES_TO_UPLOAD[@]}"; then
+              echo "✅ Release created successfully with GitHub CLI"
+              exit 0
+            else
+              echo "⚠️  GitHub CLI failed, falling back to API"
+            fi
+          fi
+          
+          # Fallback to API
+          echo "Using GitHub API..."
+          TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          
+          # Prepare release body (escape JSON)
+          RELEASE_BODY=$(cat release_notes.md | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          
+          # Create release
+          RELEASE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: token $TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases" \
+            -d "{\"tag_name\":\"v$VERSION\",\"name\":\"Release v$VERSION\",\"body\":\"$RELEASE_BODY\"}")
+          
+          HTTP_CODE=$(echo "$RELEASE_RESPONSE" | tail -n1)
+          RELEASE_BODY=$(echo "$RELEASE_RESPONSE" | head -n-1)
+          
+          if [ "$HTTP_CODE" != "201" ]; then
+            echo "❌ Error creating release. HTTP code: $HTTP_CODE"
+            echo "Response: $RELEASE_BODY"
+            exit 1
+          fi
+          
+          UPLOAD_URL=$(echo "$RELEASE_BODY" | grep -o '"upload_url":"[^"]*' | cut -d'"' -f4 | sed 's/{?name,label}//')
+          
+          if [ -z "$UPLOAD_URL" ]; then
+            echo "❌ Error: Could not extract upload URL"
+            exit 1
+          fi
+          
+          echo "Upload URL: $UPLOAD_URL"
+          
+          # Upload files
+          for FILE in "${FILES_TO_UPLOAD[@]}"; do
+            FILE_NAME=$(basename "$FILE")
+            echo "Uploading $FILE_NAME..."
+            
+            UPLOAD_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+              -H "Authorization: token $TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@$FILE" \
+              "$UPLOAD_URL?name=$FILE_NAME")
+            
+            UPLOAD_HTTP_CODE=$(echo "$UPLOAD_RESPONSE" | tail -n1)
+            if [ "$UPLOAD_HTTP_CODE" = "201" ]; then
+              echo "✅ $FILE_NAME uploaded successfully"
+            else
+              echo "⚠️  Warning: $FILE_NAME upload failed. HTTP code: $UPLOAD_HTTP_CODE"
+            fi
+          done
+          
+          echo "✅ Release v$VERSION created successfully!"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

@@ -1,0 +1,30 @@
+# Rust
+/target/
+Cargo.lock
+
+# Releases and builds
+/releases/
+*.dmg
+*.app
+*.tar.gz
+*.zip
+
+# Temporary build directories
+releases/temp-*
+releases/portable-*
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Debug
+*.dSYM/

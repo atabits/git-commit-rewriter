@@ -1,0 +1,28 @@
+[package]
+name = "commit-rewriter"
+version = "2.0.0"
+edition = "2021"
+authors = ["Amin Atabiev"]
+description = "Git commit message rewriter with GUI"
+license = "MIT"
+
+[dependencies]
+eframe = "0.28"
+egui = "0.28"
+git2 = "0.19"
+chrono = "0.4"
+rfd = "0.14"
+anyhow = "1.0"
+
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = true          # Enable Link Time Optimization
+codegen-units = 1   # Better optimization
+strip = true        # Strip symbols
+panic = "abort"     # Smaller binary
+
+[[bin]]
+name = "commit-rewriter"
+path = "src/main.rs"
+
+
