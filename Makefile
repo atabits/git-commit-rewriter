@@ -4,7 +4,7 @@
 # Git Commit Rewriter - Makefile
 # Use `make help` to list available commands
 
-.PHONY: help build clean test install macos-app windows-portable
+.PHONY: help build clean test install macos-app windows-portable linux
 
 # Variables
 PROJECT = commit-rewriter
@@ -51,6 +51,9 @@ macos-app: ## Create .app and .dmg for macOS (auto-detect architecture)
 
 windows-portable: ## Create portable Windows .exe without console (cross-compilation)
 	@./scripts/build-windows.sh
+
+linux: ## Create .tar.gz and .AppImage for Linux (native build, host architecture)
+	@./scripts/build-linux.sh
 
 # Dependency check
 check-deps: ## Check system dependencies

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Git Commit Rewriter
+Comment=Edit Git commit messages with a GUI
+Exec=commit-rewriter
+Icon=commit-rewriter
+Categories=Development;RevisionControl;
+Terminal=false

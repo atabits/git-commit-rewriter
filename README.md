@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/atabits/commit-rewriter)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](https://github.com/atabits/commit-rewriter)
 
 > **Edit Git commit messages the easy way** — A beautiful, fast GUI app built with Rust
 
@@ -18,7 +18,7 @@
 - **🔍 Smart Search** — Find commits instantly by message, hash, or author
 - **🛡️ Safe by Default** — Automatic backups before any changes
 - **🔄 Easy Rollback** — Undo changes with a single click
-- **🌐 Cross-Platform** — Works on macOS and Windows
+- **🌐 Cross-Platform** — Works on macOS, Linux, and Windows
 
 ---
 
@@ -37,7 +37,7 @@ The app will be ready in `target/release/commit-rewriter` ✨
 ### Install Globally
 
 ```bash
-# macOS
+# macOS / Linux
 sudo cp target/release/commit-rewriter /usr/local/bin/
 
 # Now run from anywhere
@@ -99,6 +99,19 @@ cargo build --release --target aarch64-apple-darwin
 
 # Windows
 cargo build --release --target x86_64-pc-windows-gnu
+
+# Linux (.tar.gz + .AppImage, run on Linux)
+make linux
+```
+
+On Linux, building requires GTK 3 development headers (used for the folder picker):
+
+```bash
+# Debian / Ubuntu
+sudo apt install build-essential pkg-config libgtk-3-dev libssl-dev
+
+# Arch
+sudo pacman -S base-devel pkgconf gtk3 openssl
 ```
 
 ---
