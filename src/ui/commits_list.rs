@@ -2,9 +2,8 @@ use crate::models::CommitInfo;
 use eframe::egui;
 
 pub struct CommitsListResult {
-    pub selected_commit: Option<(usize, String, String)>, // (index, short_hash, message)
+    pub selected_index: Option<usize>,
     pub load_more_clicked: bool,
-    pub search_changed: bool,
 }
 
 pub fn render_commits_list(
@@ -17,9 +16,8 @@ pub fn render_commits_list(
     has_more_commits: bool,
 ) -> CommitsListResult {
     let mut result = CommitsListResult {
-        selected_commit: None,
+        selected_index: None,
         load_more_clicked: false,
-        search_changed: false,
     };
 
     ui.horizontal(|ui| {
@@ -50,21 +48,16 @@ pub fn render_commits_list(
 
     if !commits.is_empty() {
         ui.horizontal(|ui| {
-            let search_response = ui.add(
+            ui.add(
                 egui::TextEdit::singleline(search_query)
                     .hint_text("🔍 Search by hash, message, author...")
                     .desired_width(f32::INFINITY),
             );
 
-            if search_response.changed() {
-                result.search_changed = true;
-            }
-
-            if !search_query.is_empty() {
-                if ui.small_button("✖").on_hover_text("Clear search").clicked() {
-                    search_query.clear();
-                    result.search_changed = true;
-                }
+            if !search_query.is_empty()
+                && ui.small_button("✖").on_hover_text("Clear search").clicked()
+            {
+                search_query.clear();
             }
         });
         ui.add_space(2.0);
@@ -115,31 +108,20 @@ pub fn render_commits_list(
 
                         let full_text = format!(
                             "{} │ {} │ {}",
-                            commit.short_hash, commit.date, commit.message
+                            commit.short_hash, commit.date, commit.summary
                         );
 
-                        // Create selectable with highlighted matches
-                        let response = if !search_query.trim().is_empty() {
-                            render_selectable_with_highlight(
-                                ui,
-                                is_selected,
-                                &full_text,
-                                search_query,
-                            )
-                        } else {
-                            ui.selectable_label(
-                                is_selected,
-                                egui::RichText::new(&full_text).monospace().size(11.0),
-                            )
-                        };
+                        let response = ui.selectable_label(
+                            is_selected,
+                            highlighted_text(ui, &full_text, search_query.trim()),
+                        );
 
                         if response.clicked() && !is_processing {
-                            result.selected_commit =
-                                Some((i, commit.short_hash.clone(), commit.message.clone()));
+                            result.selected_index = Some(i);
                         }
 
                         response.on_hover_text(format!(
-                            "Hash: {}\nAuthor: {}\nDate: {}\nMessage: {}",
+                            "Hash: {}\nAuthor: {}\nDate: {}\n\n{}",
                             commit.hash, commit.author, commit.date, commit.message
                         ));
                     }
@@ -183,138 +165,108 @@ pub fn render_commits_list(
 }
 
 fn filter_commits<'a>(commits: &'a [CommitInfo], query: &str) -> Vec<(usize, &'a CommitInfo)> {
-    if query.trim().is_empty() {
-        commits.iter().enumerate().collect()
-    } else {
-        let query_lower = query.to_lowercase();
-        commits
-            .iter()
-            .enumerate()
-            .filter(|(_, commit)| {
-                commit.message.to_lowercase().contains(&query_lower)
-                    || commit.hash.to_lowercase().contains(&query_lower)
-                    || commit.author.to_lowercase().contains(&query_lower)
-            })
-            .collect()
-    }
+    let query = query.trim();
+    commits
+        .iter()
+        .enumerate()
+        .filter(|(_, commit)| {
+            query.is_empty()
+                || !find_matches(&commit.message, query).is_empty()
+                || !find_matches(&commit.hash, query).is_empty()
+                || !find_matches(&commit.author, query).is_empty()
+        })
+        .collect()
 }
 
-fn render_selectable_with_highlight(
-    ui: &mut egui::Ui,
-    is_selected: bool,
-    text: &str,
-    query: &str,
-) -> egui::Response {
-    let query_lower = query.to_lowercase();
-    let text_lower = text.to_lowercase();
+/// Byte ranges of case-insensitive, non-overlapping matches of `query` in `text`.
+///
+/// Works on chars, so ranges always fall on char boundaries of `text` even when
+/// lowercasing changes the byte length of a character.
+fn find_matches(text: &str, query: &str) -> Vec<(usize, usize)> {
+    let query: Vec<char> = query.chars().flat_map(char::to_lowercase).collect();
+    if query.is_empty() {
+        return Vec::new();
+    }
 
-    // Find all match positions
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
     let mut matches = Vec::new();
-    let mut search_start = 0;
+    let mut i = 0;
 
-    while let Some(pos) = text_lower[search_start..].find(&query_lower) {
-        let actual_pos = search_start + pos;
-        matches.push((actual_pos, actual_pos + query.len()));
-        search_start = actual_pos + 1;
-    }
-
-    if matches.is_empty() {
-        return ui.selectable_label(
-            is_selected,
-            egui::RichText::new(text).monospace().size(11.0),
-        );
-    }
-
-    // Create a custom selectable widget with highlighted text
-    let button_padding = ui.style().spacing.button_padding;
-    let text_height = ui.text_style_height(&egui::TextStyle::Monospace);
-
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), text_height + button_padding.y * 2.0),
-        egui::Sense::click(),
-    );
-
-    if is_selected {
-        let selection_color = ui.style().visuals.selection.bg_fill;
-        ui.painter().rect_filled(rect, 0.0, selection_color);
-    }
-
-    if response.hovered() {
-        let hover_color = ui.style().visuals.widgets.hovered.bg_fill;
-        ui.painter().rect_filled(rect, 0.0, hover_color);
-    }
-
-    // Render text with highlights
-    let mut last_end = 0;
-    let text_pos = rect.min + button_padding;
-    let mut current_x = text_pos.x;
-
-    for (start, end) in matches {
-        // Render text before match
-        if start > last_end {
-            let segment = &text[last_end..start];
-            let text_color = ui.style().visuals.text_color();
-            ui.painter().text(
-                egui::pos2(current_x, text_pos.y),
-                egui::Align2::LEFT_TOP,
-                segment,
-                egui::FontId::monospace(11.0),
-                text_color,
-            );
-            current_x += ui.fonts(|f| {
-                f.layout_no_wrap(
-                    segment.to_string(),
-                    egui::FontId::monospace(11.0),
-                    text_color,
-                )
-                .size()
-                .x
-            });
+    while i < chars.len() {
+        let mut matched = 0;
+        let mut j = i;
+        while j < chars.len() && matched < query.len() {
+            let lower: Vec<char> = chars[j].1.to_lowercase().collect();
+            if query[matched..].starts_with(&lower) {
+                matched += lower.len();
+                j += 1;
+            } else {
+                break;
+            }
         }
 
-        // Render highlighted match
-        let segment = &text[start..end];
-        let highlight_rect = egui::Rect::from_min_size(
-            egui::pos2(current_x, text_pos.y),
-            egui::vec2(
-                ui.fonts(|f| {
-                    f.layout_no_wrap(
-                        segment.to_string(),
-                        egui::FontId::monospace(11.0),
-                        egui::Color32::BLACK,
-                    )
-                    .size()
-                    .x
-                }),
-                ui.text_style_height(&egui::TextStyle::Monospace),
-            ),
-        );
-        ui.painter()
-            .rect_filled(highlight_rect, 0.0, egui::Color32::from_rgb(255, 255, 0));
-        ui.painter().text(
-            egui::pos2(current_x, text_pos.y),
-            egui::Align2::LEFT_TOP,
-            segment,
-            egui::FontId::monospace(11.0),
-            egui::Color32::BLACK,
-        );
-        current_x += highlight_rect.width();
+        if matched == query.len() {
+            let end = chars.get(j).map_or(text.len(), |(pos, _)| *pos);
+            matches.push((chars[i].0, end));
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
 
+    matches
+}
+
+fn highlighted_text(ui: &egui::Ui, text: &str, query: &str) -> egui::text::LayoutJob {
+    let font_id = egui::FontId::monospace(11.0);
+    let normal = egui::TextFormat {
+        font_id: font_id.clone(),
+        color: ui.visuals().text_color(),
+        ..Default::default()
+    };
+    let highlight = egui::TextFormat {
+        font_id,
+        color: egui::Color32::BLACK,
+        background: egui::Color32::from_rgb(255, 255, 0),
+        ..Default::default()
+    };
+
+    let mut job = egui::text::LayoutJob::default();
+    let mut last_end = 0;
+    for (start, end) in find_matches(text, query) {
+        job.append(&text[last_end..start], 0.0, normal.clone());
+        job.append(&text[start..end], 0.0, highlight.clone());
         last_end = end;
     }
+    job.append(&text[last_end..], 0.0, normal);
+    job
+}
 
-    // Render remaining text
-    if last_end < text.len() {
-        let segment = &text[last_end..];
-        let text_color = ui.style().visuals.text_color();
-        ui.painter().text(
-            egui::pos2(current_x, text_pos.y),
-            egui::Align2::LEFT_TOP,
-            segment,
-            egui::FontId::monospace(11.0),
-            text_color,
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_matches_case_insensitive() {
+        assert_eq!(
+            find_matches("Fix Bug in fix", "fix"),
+            vec![(0, 3), (11, 14)]
         );
+        assert!(find_matches("abc", "x").is_empty());
+        assert!(find_matches("abc", "").is_empty());
     }
 
-    response
+    #[test]
+    fn test_find_matches_unicode_boundaries() {
+        // 'İ' lowercases to two chars, which used to shift byte offsets
+        let text = "İstanbul fix";
+        let matches = find_matches(text, "fix");
+        assert_eq!(matches.len(), 1);
+        let (start, end) = matches[0];
+        assert_eq!(&text[start..end], "fix");
+
+        let text = "Исправить ошибку";
+        let (start, end) = find_matches(text, "ОШИБ")[0];
+        assert_eq!(&text[start..end], "ошиб");
+    }
 }

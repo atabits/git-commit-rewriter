@@ -7,16 +7,22 @@ pub fn render_logs_panel(
     log_filter: &mut LogFilter,
     show_progress: bool,
     progress: f32,
-    is_processing: bool,
-) {
+) -> bool {
+    let mut clear_clicked = false;
+
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
             ui.heading(egui::RichText::new("📝 Logs").size(18.0).strong());
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("🗑️ Clear").clicked() && !is_processing {}
+                if ui
+                    .add_enabled(!logs.is_empty(), egui::Button::new("🗑️ Clear"))
+                    .clicked()
+                {
+                    clear_clicked = true;
+                }
 
-                egui::ComboBox::from_id_source("log_filter")
+                egui::ComboBox::from_id_salt("log_filter")
                     .selected_text(log_filter.name())
                     .show_ui(ui, |ui| {
                         ui.selectable_value(log_filter, LogFilter::All, LogFilter::All.name());
@@ -65,7 +71,7 @@ pub fn render_logs_panel(
 
         let remaining_height = ui.available_height();
         egui::ScrollArea::vertical()
-            .stick_to_bottom(false)
+            .stick_to_bottom(true)
             .auto_shrink([false, true])
             .max_height(remaining_height.min(800.0))
             .show(ui, |ui| {
@@ -95,6 +101,8 @@ pub fn render_logs_panel(
                 }
             });
     });
+
+    clear_clicked
 }
 
 fn render_log_entry(ui: &mut egui::Ui, entry: &LogEntry) {

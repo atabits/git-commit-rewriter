@@ -7,7 +7,7 @@ pub struct EditorPanelResult {
 pub fn render_editor_panel(
     ui: &mut egui::Ui,
     new_message: &mut String,
-    selected_index: Option<usize>,
+    has_selection: bool,
     is_processing: bool,
 ) -> EditorPanelResult {
     let mut result = EditorPanelResult {
@@ -23,7 +23,7 @@ pub fn render_editor_panel(
             );
 
             if !new_message.trim().is_empty() {
-                let len = new_message.lines().next().unwrap_or("").len();
+                let len = new_message.lines().next().unwrap_or("").chars().count();
                 let color = if len > 72 {
                     egui::Color32::from_rgb(255, 180, 50)
                 } else {
@@ -64,7 +64,7 @@ pub fn render_editor_panel(
 
             if ui
                 .add_enabled(
-                    !is_processing && selected_index.is_some() && !new_message.trim().is_empty(),
+                    !is_processing && has_selection && !new_message.trim().is_empty(),
                     apply_btn,
                 )
                 .clicked()
@@ -72,7 +72,7 @@ pub fn render_editor_panel(
                 result.apply_clicked = true;
             }
 
-            if selected_index.is_none() {
+            if !has_selection {
                 ui.label(
                     egui::RichText::new("← Select a commit from the list")
                         .size(11.0)

@@ -4,4 +4,4 @@ pub mod preview;
 
 pub use commit::CommitInfo;
 pub use log::{LogEntry, LogFilter, LogLevel};
-pub use preview::PreviewData;
+pub use preview::{PreviewData, RefChange, RewriteDetails};

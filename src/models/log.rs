@@ -4,7 +4,6 @@ pub enum LogLevel {
     Success,
     Warning,
     Error,
-    Debug,
 }
 
 impl LogLevel {
@@ -14,7 +13,6 @@ impl LogLevel {
             LogLevel::Success => "✅",
             LogLevel::Warning => "⚠️",
             LogLevel::Error => "❌",
-            LogLevel::Debug => "🔍",
         }
     }
 
@@ -24,7 +22,6 @@ impl LogLevel {
             LogLevel::Success => (80, 200, 120),
             LogLevel::Warning => (255, 180, 50),
             LogLevel::Error => (255, 100, 100),
-            LogLevel::Debug => (120, 120, 140),
         }
     }
 }
@@ -89,7 +86,6 @@ mod tests {
         assert_eq!(LogLevel::Success.icon(), "✅");
         assert_eq!(LogLevel::Warning.icon(), "⚠️");
         assert_eq!(LogLevel::Error.icon(), "❌");
-        assert_eq!(LogLevel::Debug.icon(), "🔍");
     }
 
     #[test]
@@ -99,7 +95,10 @@ mod tests {
         assert!(filter.should_show(&LogLevel::Success));
         assert!(filter.should_show(&LogLevel::Warning));
         assert!(filter.should_show(&LogLevel::Error));
-        assert!(!filter.should_show(&LogLevel::Debug));
+
+        let filter = LogFilter::ErrorsOnly;
+        assert!(!filter.should_show(&LogLevel::Warning));
+        assert!(filter.should_show(&LogLevel::Error));
     }
 
     #[test]

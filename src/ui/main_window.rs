@@ -1,4 +1,3 @@
-use crate::models::CommitInfo;
 use eframe::egui;
 
 pub struct MainWindowResult {
@@ -9,11 +8,11 @@ pub struct MainWindowResult {
 pub fn render_main_window(
     ui: &mut egui::Ui,
     repo_path: Option<&std::path::PathBuf>,
-    commits: &[CommitInfo],
+    commits_count: usize,
     is_processing: bool,
     show_help: &mut bool,
     modify_all_branches: &mut bool,
-    current_branch: Option<&String>,
+    current_branch: Option<&str>,
 ) -> MainWindowResult {
     let mut result = MainWindowResult {
         pick_folder_clicked: false,
@@ -55,9 +54,9 @@ pub fn render_main_window(
 
         if *show_help {
             ui.add_space(3.0);
-            egui::Frame::none()
+            egui::Frame::NONE
                 .fill(egui::Color32::from_rgb(50, 60, 80))
-                .rounding(5.0)
+                .corner_radius(5.0)
                 .inner_margin(10.0)
                 .show(ui, |ui| {
                     ui.label(
@@ -77,9 +76,13 @@ pub fn render_main_window(
                             .strong()
                             .color(egui::Color32::from_rgb(255, 180, 50)),
                     );
-                    ui.label("• History rewriting requires force push in terminal");
-                    ui.label("• Don't use on shared branches");
-                    ui.label("• Make a backup first");
+                    ui.label(
+                        "• Rewriting changes the hashes of the commit and all its descendants",
+                    );
+                    ui.label(
+                        "• Push with git push --force-with-lease, don't rewrite shared branches",
+                    );
+                    ui.label("• Original refs are kept until you confirm, Cancel restores them");
 
                     ui.add_space(5.0);
                     ui.separator();
@@ -128,28 +131,25 @@ pub fn render_main_window(
             ui.horizontal(|ui| {
                 ui.label("🌐 Modification mode:");
 
-                let modify_all = *modify_all_branches;
-                ui.checkbox(
-                    modify_all_branches,
-                    egui::RichText::new(if modify_all {
-                        "All branches (--all)"
-                    } else {
-                        "Current branch only"
-                    })
-                    .size(12.0),
+                ui.add_enabled(
+                    !is_processing,
+                    egui::Checkbox::new(
+                        modify_all_branches,
+                        egui::RichText::new("All branches and tags").size(12.0),
+                    ),
                 );
 
                 if !*modify_all_branches {
                     if let Some(branch) = current_branch {
                         ui.label(
-                            egui::RichText::new(format!("({})", branch))
+                            egui::RichText::new(format!("only {}", branch))
                                 .monospace()
                                 .size(11.0)
                                 .color(egui::Color32::from_rgb(100, 200, 255)),
                         );
                     } else {
                         ui.label(
-                            egui::RichText::new("(not detected)")
+                            egui::RichText::new("only detached HEAD")
                                 .size(11.0)
                                 .color(egui::Color32::from_rgb(255, 150, 50)),
                         );
@@ -163,7 +163,7 @@ pub fn render_main_window(
                             .color(egui::Color32::from_rgb(255, 180, 50)),
                     );
                     ui.label(
-                        egui::RichText::new("Modifies all branches")
+                        egui::RichText::new("Rewrites every branch and tag containing the commit")
                             .size(10.0)
                             .color(egui::Color32::from_rgb(255, 180, 50))
                             .italics(),
@@ -184,10 +184,10 @@ pub fn render_main_window(
                         .color(egui::Color32::GRAY),
                 );
 
-                if !commits.is_empty() {
+                if commits_count > 0 {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            egui::RichText::new(format!("📊 {} commits", commits.len()))
+                            egui::RichText::new(format!("📊 {} commits", commits_count))
                                 .size(11.0)
                                 .color(egui::Color32::from_rgb(100, 200, 100)),
                         );

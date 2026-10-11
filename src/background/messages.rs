@@ -1,12 +1,14 @@
 use crate::models::{CommitInfo, LogLevel, PreviewData};
 
-#[derive(Clone)]
 pub enum BackgroundMessage {
-    Log(String),
-    LogTyped(String, LogLevel),
+    Log(String, LogLevel),
     Progress(f32),
-    CommitsLoaded(Vec<CommitInfo>),
-    CommitRewritten,
+    CommitsLoaded {
+        commits: Vec<CommitInfo>,
+        has_more: bool,
+        reset: bool,
+    },
+    /// A rewrite is waiting to be confirmed or rolled back.
     PreviewReady(PreviewData),
     Error(String),
     Done,

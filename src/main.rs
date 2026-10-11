@@ -1,12 +1,6 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-mod app;
-mod background;
-mod git;
-mod models;
-mod ui;
-
-use app::CommitRewriterApp;
+use commit_rewriter::app::CommitRewriterApp;
 use eframe::egui;
 
 fn main() -> Result<(), eframe::Error> {
