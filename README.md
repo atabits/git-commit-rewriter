@@ -6,7 +6,7 @@
 
 > **Edit Git commit messages the easy way** — A beautiful, fast GUI app built with Rust
 
-![Screenshot](images/screenshot.png)
+![Screenshot](images/screenshot-v2.1.0.png)
 
 ---
 
