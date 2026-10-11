@@ -108,10 +108,10 @@ On Linux, building requires GTK 3 development headers (used for the folder picke
 
 ```bash
 # Debian / Ubuntu
-sudo apt install build-essential pkg-config libgtk-3-dev libssl-dev
+sudo apt install build-essential pkg-config libgtk-3-dev
 
 # Arch
-sudo pacman -S base-devel pkgconf gtk3 openssl
+sudo pacman -S base-devel pkgconf gtk3
 ```
 
 ---
