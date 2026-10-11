@@ -1,13 +1,26 @@
 #!/bin/bash
 
-# Script to create .exe and archive for Windows (cross-compilation from macOS)
+# Script to create .exe and archive for Windows
 # Usage: ./build-windows.sh
+#
+# On Windows (Git Bash) builds natively with the MSVC toolchain.
+# On macOS/Linux cross-compiles with MinGW (x86_64-pc-windows-gnu).
 
 set -e
 
 PROJECT_NAME="commit-rewriter"
 APP_NAME="Git Commit Rewriter"
-TARGET="x86_64-pc-windows-gnu"
+
+case "$OSTYPE" in
+    msys*|cygwin*|win32*)
+        NATIVE_WINDOWS=1
+        TARGET="x86_64-pc-windows-msvc"
+        ;;
+    *)
+        NATIVE_WINDOWS=0
+        TARGET="x86_64-pc-windows-gnu"
+        ;;
+esac
 
 # Determine project root
 if [ -f "Cargo.toml" ]; then
@@ -49,7 +62,11 @@ error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-info "Building for Windows (cross-compilation)..."
+if [ "$NATIVE_WINDOWS" = "1" ]; then
+    info "Building for Windows (native, $TARGET)..."
+else
+    info "Building for Windows (cross-compilation, $TARGET)..."
+fi
 
 # Check Rust
 if ! command -v rustc &> /dev/null; then
@@ -124,7 +141,6 @@ Installation:
 Requirements:
 -------------
 - Windows 10 or newer
-- Visual C++ Redistributable (usually already installed)
 
 Usage:
 ------
@@ -142,7 +158,14 @@ info "Creating ZIP archive..."
 mkdir -p "$DIST_DIR"
 ORIGINAL_DIR=$(pwd)
 cd "$TEMP_DIR"
-zip -r "$ORIGINAL_DIR/$DIST_DIR/$ZIP_NAME" . > /dev/null
+if command -v zip &> /dev/null; then
+    zip -r "$ORIGINAL_DIR/$DIST_DIR/$ZIP_NAME" . > /dev/null
+elif command -v 7z &> /dev/null; then
+    7z a -tzip "$ORIGINAL_DIR/$DIST_DIR/$ZIP_NAME" . > /dev/null
+else
+    error "Neither zip nor 7z found"
+    exit 1
+fi
 cd "$ORIGINAL_DIR"
 
 # Cleanup temporary directory
