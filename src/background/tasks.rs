@@ -1,271 +1,210 @@
 use crate::background::BackgroundMessage;
-use crate::git::{rollback_changes, GitRepository, GitRepositoryImpl};
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use crate::git::{self, RefUpdate, RewriteScope};
+use crate::models::{LogLevel, PreviewData, RefChange, RewriteDetails};
+use git2::{Oid, Repository};
+use std::path::Path;
 use std::sync::mpsc::Sender;
 
+struct Reporter {
+    tx: Sender<BackgroundMessage>,
+}
+
+impl Reporter {
+    fn log(&self, message: impl Into<String>, level: LogLevel) {
+        self.tx
+            .send(BackgroundMessage::Log(message.into(), level))
+            .ok();
+    }
+
+    fn info(&self, message: impl Into<String>) {
+        self.log(message, LogLevel::Info);
+    }
+
+    fn success(&self, message: impl Into<String>) {
+        self.log(message, LogLevel::Success);
+    }
+
+    fn progress(&self, value: f32) {
+        self.tx.send(BackgroundMessage::Progress(value)).ok();
+    }
+
+    fn send(&self, message: BackgroundMessage) {
+        self.tx.send(message).ok();
+    }
+
+    fn fail(&self, context: &str, error: anyhow::Error) {
+        self.send(BackgroundMessage::Error(format!(
+            "{}: {:#}",
+            context, error
+        )));
+    }
+}
+
 pub fn load_commits_task(
-    path: PathBuf,
+    path: &Path,
     limit: usize,
     offset: usize,
     reset: bool,
     tx: Sender<BackgroundMessage>,
 ) {
-    if reset {
-        tx.send(BackgroundMessage::Log("Opening repository...".to_string()))
-            .ok();
-    }
+    let reporter = Reporter { tx };
 
-    let repo = match GitRepositoryImpl::open(&path) {
-        Ok(r) => r,
-        Err(e) => {
-            tx.send(BackgroundMessage::Error(format!(
-                "Failed to open repository: {}",
-                e
-            )))
-            .ok();
-            return;
-        }
+    let repo = match git::open(path) {
+        Ok(repo) => repo,
+        Err(e) => return reporter.fail("Failed to open repository", e),
     };
 
-    if reset {
-        tx.send(BackgroundMessage::Log("Reading commits...".to_string()))
-            .ok();
+    if send_commits(&reporter, &repo, limit, offset, reset) && reset {
+        report_pending_rewrite(&reporter, &repo);
     }
-
-    match repo.load_commits(limit, offset) {
-        Ok(commits) => {
-            let count = commits.len();
-            if reset {
-                tx.send(BackgroundMessage::Log(format!(
-                    "✅ Loaded {} commits",
-                    count
-                )))
-                .ok();
-            } else {
-                tx.send(BackgroundMessage::Log(format!(
-                    "✅ Loaded {} more commits",
-                    count
-                )))
-                .ok();
-            }
-            tx.send(BackgroundMessage::CommitsLoaded(commits)).ok();
-        }
-        Err(e) => {
-            tx.send(BackgroundMessage::Error(format!(
-                "Error reading commits: {}",
-                e
-            )))
-            .ok();
-        }
-    }
-
-    tx.send(BackgroundMessage::Done).ok();
+    reporter.send(BackgroundMessage::Done);
 }
 
 pub fn rewrite_commit_task(
-    path: PathBuf,
-    commit_hash: String,
-    new_message: String,
-    modify_all_branches: bool,
-    branch_name: Option<String>,
+    path: &Path,
+    commit_hash: &str,
+    new_message: &str,
+    scope: RewriteScope,
+    reload_limit: usize,
     tx: Sender<BackgroundMessage>,
 ) {
-    let send_log = |msg: &str| {
-        tx.send(BackgroundMessage::Log(msg.to_string())).ok();
-    };
+    let reporter = Reporter { tx };
 
-    send_log("Searching for commit in repository...");
-    tx.send(BackgroundMessage::Progress(0.3)).ok();
+    let result = (|| {
+        let repo = git::open(path)?;
+        let target = Oid::from_str(commit_hash)?;
+        let old_message =
+            String::from_utf8_lossy(repo.find_commit(target)?.message_bytes()).into_owned();
 
-    send_log("Preparing to rewrite history...");
-    send_log("⚙️ Using git filter-branch...");
-    send_log("⏳ This may take a while...");
-    tx.send(BackgroundMessage::Progress(0.5)).ok();
+        reporter.info("Rewriting history...");
+        let result = git::rewrite_message(&repo, target, new_message, scope, |done, total| {
+            reporter.progress(done as f32 / total.max(1) as f32 * 0.9);
+        })?;
 
-    let mut child = match crate::git::commands::run_git_filter_branch(
-        &path,
-        &commit_hash,
-        &new_message,
-        modify_all_branches,
-        branch_name.as_deref(),
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            tx.send(BackgroundMessage::Error(format!(
-                "Failed to start git filter-branch: {}",
-                e
-            )))
-            .ok();
-            return;
-        }
-    };
+        let details = RewriteDetails {
+            old_hash: commit_hash.to_string(),
+            new_hash: result.new_target.to_string(),
+            old_message,
+            new_message: git::normalize_message(new_message)?,
+            rewritten_commits: result.rewritten_commits,
+        };
+        Ok::<_, anyhow::Error>((repo, details, result.ref_updates))
+    })();
 
-    // read stdout/stderr in separate threads
-    let tx_stdout = tx.clone();
-    let tx_stderr = tx.clone();
-
-    if let Some(stdout) = child.stdout.take() {
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    if !line.trim().is_empty() {
-                        tx_stdout
-                            .send(BackgroundMessage::Log(format!("📝 {}", line)))
-                            .ok();
-                    }
-                }
-            }
-        });
-    }
-
-    if let Some(stderr) = child.stderr.take() {
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    if !line.trim().is_empty() {
-                        tx_stderr
-                            .send(BackgroundMessage::Log(format!("📝 {}", line)))
-                            .ok();
-                    }
-                }
-            }
-        });
-    }
-
-    // send progress updates while process runs
-    let mut progress = 0.5;
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        progress += 0.05;
-        if progress > 0.9 {
-            progress = 0.9;
-        }
-        tx.send(BackgroundMessage::Progress(progress)).ok();
-
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                tx.send(BackgroundMessage::Progress(0.9)).ok();
-
-                if !status.success() {
-                    tx.send(BackgroundMessage::Error(
-                        "git filter-branch failed (see logs above)".to_string(),
-                    ))
-                    .ok();
-                    return;
-                }
-
-                send_log("✅ git filter-branch completed successfully");
-                break;
-            }
-            Ok(None) => {
-                continue;
-            }
-            Err(e) => {
-                tx.send(BackgroundMessage::Error(format!(
-                    "Error checking status: {}",
-                    e
-                )))
-                .ok();
-                return;
-            }
-        }
-    }
-
-    send_log("Collecting preview data...");
-
-    let repo = match git2::Repository::open(&path) {
+    let (repo, details, ref_updates) = match result {
         Ok(r) => r,
-        Err(e) => {
-            tx.send(BackgroundMessage::Error(format!(
-                "Failed to open repository: {}",
-                e
-            )))
-            .ok();
-            return;
-        }
+        Err(e) => return reporter.fail("Rewrite failed", e),
     };
 
-    let target_oid = match git2::Oid::from_str(&commit_hash) {
-        Ok(oid) => oid,
-        Err(e) => {
-            tx.send(BackgroundMessage::Error(format!(
-                "Invalid hash format: {}",
-                e
-            )))
-            .ok();
-            return;
-        }
-    };
-
-    let target_commit = match repo.find_commit(target_oid) {
-        Ok(c) => c,
-        Err(e) => {
-            tx.send(BackgroundMessage::Error(format!("Commit not found: {}", e)))
-                .ok();
-            return;
-        }
-    };
-
-    let old_message = target_commit
-        .message()
-        .unwrap_or("(no message)")
-        .lines()
-        .next()
-        .unwrap_or("(no message)")
-        .to_string();
-
-    let affected_commits = match crate::git::commands::get_original_refs(&path) {
-        Ok(refs) => refs,
-        Err(_) => Vec::new(),
-    };
-
-    let diff_output = match crate::git::commands::get_git_log(&path, 10) {
-        Ok(log) => log,
-        Err(_) => "Failed to get diff".to_string(),
-    };
-
-    let preview_data = crate::models::PreviewData::new(
-        commit_hash.clone(),
-        old_message,
-        new_message,
-        affected_commits,
-        diff_output,
-    );
-
-    send_log(&format!(
-        "✅ Commit {} successfully rewritten! Showing preview...",
-        &commit_hash[..8]
+    reporter.success(format!(
+        "Rewrote {} commits, moved {} refs. Review and confirm the change",
+        details.rewritten_commits,
+        ref_updates.len()
     ));
-    tx.send(BackgroundMessage::Progress(1.0)).ok();
-    tx.send(BackgroundMessage::PreviewReady(preview_data)).ok();
-    tx.send(BackgroundMessage::Done).ok();
+    reporter.progress(1.0);
+    reporter.send(BackgroundMessage::PreviewReady(PreviewData {
+        details: Some(details),
+        ref_changes: to_ref_changes(&ref_updates),
+    }));
+    send_commits(&reporter, &repo, reload_limit, 0, true);
+    reporter.send(BackgroundMessage::Done);
 }
 
-pub fn rollback_changes_task(path: PathBuf, tx: Sender<BackgroundMessage>) {
-    let send_log = |msg: &str| {
-        tx.send(BackgroundMessage::Log(msg.to_string())).ok();
+pub fn confirm_rewrite_task(path: &Path, reload_limit: usize, tx: Sender<BackgroundMessage>) {
+    let reporter = Reporter { tx };
+
+    let repo = match git::open(path) {
+        Ok(repo) => repo,
+        Err(e) => return reporter.fail("Failed to open repository", e),
     };
 
-    send_log("Restoring original refs...");
-    tx.send(BackgroundMessage::Progress(0.3)).ok();
-
-    match rollback_changes(&path) {
-        Ok(restored_count) => {
-            tx.send(BackgroundMessage::Progress(0.7)).ok();
-            send_log(&format!(
-                "✅ Rollback completed! Restored {} refs",
-                restored_count
-            ));
+    match git::confirm(&repo) {
+        Ok(removed) => {
+            reporter.success(format!("Changes confirmed, {} backups removed", removed));
+            reporter.log(
+                "Push rewritten branches with: git push --force-with-lease",
+                LogLevel::Warning,
+            );
         }
-        Err(e) => {
-            tx.send(BackgroundMessage::Error(format!("Rollback error: {}", e)))
-                .ok();
-        }
+        Err(e) => return reporter.fail("Failed to confirm changes", e),
     }
 
-    tx.send(BackgroundMessage::Progress(1.0)).ok();
-    tx.send(BackgroundMessage::Done).ok();
+    send_commits(&reporter, &repo, reload_limit, 0, true);
+    reporter.send(BackgroundMessage::Done);
+}
+
+pub fn rollback_changes_task(path: &Path, reload_limit: usize, tx: Sender<BackgroundMessage>) {
+    let reporter = Reporter { tx };
+
+    let repo = match git::open(path) {
+        Ok(repo) => repo,
+        Err(e) => return reporter.fail("Failed to open repository", e),
+    };
+
+    reporter.info("Restoring refs from backup...");
+    reporter.progress(0.5);
+
+    match git::rollback(&repo) {
+        Ok(restored) => {
+            reporter.success(format!("Rollback completed, {} refs restored", restored));
+            reporter.progress(1.0);
+        }
+        Err(e) => return reporter.fail("Rollback failed", e),
+    }
+
+    send_commits(&reporter, &repo, reload_limit, 0, true);
+    reporter.send(BackgroundMessage::Done);
+}
+
+/// Sends a page of commits. Returns `false` if loading failed.
+fn send_commits(
+    reporter: &Reporter,
+    repo: &Repository,
+    limit: usize,
+    offset: usize,
+    reset: bool,
+) -> bool {
+    match git::load_commits(repo, limit, offset) {
+        Ok(page) => {
+            reporter.info(format!("Loaded {} commits", page.commits.len()));
+            reporter.send(BackgroundMessage::CommitsLoaded {
+                commits: page.commits,
+                has_more: page.has_more,
+                reset,
+            });
+            true
+        }
+        Err(e) => {
+            reporter.fail("Error reading commits", e);
+            false
+        }
+    }
+}
+
+fn report_pending_rewrite(reporter: &Reporter, repo: &Repository) {
+    match git::pending_backups(repo) {
+        Ok(updates) if !updates.is_empty() => {
+            reporter.log(
+                "Found an unconfirmed rewrite: confirm or roll it back",
+                LogLevel::Warning,
+            );
+            reporter.send(BackgroundMessage::PreviewReady(PreviewData {
+                details: None,
+                ref_changes: to_ref_changes(&updates),
+            }));
+        }
+        Ok(_) => {}
+        Err(e) => reporter.fail("Failed to check for unconfirmed rewrite", e),
+    }
+}
+
+fn to_ref_changes(updates: &[RefUpdate]) -> Vec<RefChange> {
+    updates
+        .iter()
+        .map(|u| RefChange {
+            name: u.name.clone(),
+            old_hash: u.old_commit.to_string(),
+            new_hash: u.new_commit.to_string(),
+        })
+        .collect()
 }

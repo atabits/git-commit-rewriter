@@ -1,88 +1,68 @@
 use crate::models::CommitInfo;
 use anyhow::Result;
-use chrono::{DateTime, Utc};
-use git2::Repository;
+use chrono::DateTime;
+use git2::{Repository, Sort};
 use std::path::Path;
 
-pub trait GitRepository {
-    fn load_commits(&self, limit: usize, offset: usize) -> Result<Vec<CommitInfo>>;
-    fn get_current_branch(&self) -> Option<String>;
+/// One page of commits reachable from HEAD.
+#[derive(Clone, Debug)]
+pub struct CommitPage {
+    pub commits: Vec<CommitInfo>,
+    pub has_more: bool,
 }
 
-pub struct GitRepositoryImpl {
-    repo: Repository,
+pub fn open<P: AsRef<Path>>(path: P) -> Result<Repository> {
+    Ok(Repository::open(path)?)
 }
 
-impl GitRepositoryImpl {
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let repo = Repository::open(path)?;
-        Ok(Self { repo })
+pub fn is_valid_repo<P: AsRef<Path>>(path: P) -> bool {
+    Repository::open(path).is_ok()
+}
+
+/// Loads up to `limit` commits starting at `offset`, newest first.
+pub fn load_commits(repo: &Repository, limit: usize, offset: usize) -> Result<CommitPage> {
+    // an empty repository has no HEAD commit yet
+    if repo.head().is_err() {
+        return Ok(CommitPage {
+            commits: Vec::new(),
+            has_more: false,
+        });
     }
 
-    pub fn is_valid_repo<P: AsRef<Path>>(path: P) -> bool {
-        Repository::open(path).is_ok()
-    }
-}
+    let mut revwalk = repo.revwalk()?;
+    revwalk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
+    revwalk.push_head()?;
 
-impl GitRepository for GitRepositoryImpl {
-    fn load_commits(&self, limit: usize, offset: usize) -> Result<Vec<CommitInfo>> {
-        let mut revwalk = self.repo.revwalk()?;
-        revwalk.push_head()?;
+    let mut commits = Vec::new();
+    let mut has_more = false;
 
-        let mut commits = Vec::new();
-        let end_index = offset + limit;
-
-        for (i, oid) in revwalk.enumerate() {
-            if i >= end_index {
-                break;
-            }
-            if i < offset {
-                continue;
-            }
-
-            let oid = oid?;
-            let commit = self.repo.find_commit(oid)?;
-
-            let message = commit
-                .message()
-                .unwrap_or("(no message)")
-                .lines()
-                .next()
-                .unwrap_or("(no message)")
-                .to_string();
-
-            let time = commit.time();
-            let datetime = DateTime::<Utc>::from_timestamp(time.seconds(), 0).unwrap_or_default();
-            let date_str = datetime.format("%Y-%m-%d %H:%M").to_string();
-
-            let author = commit.author().name().unwrap_or("Unknown").to_string();
-
-            let hash_str = oid.to_string();
-            let short_hash = hash_str.chars().take(8).collect::<String>();
-
-            commits.push(CommitInfo::new(
-                hash_str, short_hash, message, date_str, author,
-            ));
+    for oid in revwalk.skip(offset) {
+        if commits.len() == limit {
+            has_more = true;
+            break;
         }
 
-        Ok(commits)
+        let commit = repo.find_commit(oid?)?;
+        let hash = commit.id().to_string();
+        let message = String::from_utf8_lossy(commit.message_bytes()).into_owned();
+        let date = DateTime::from_timestamp(commit.time().seconds(), 0)
+            .unwrap_or_default()
+            .format("%Y-%m-%d %H:%M")
+            .to_string();
+        let author = commit.author().name().unwrap_or("Unknown").to_string();
+
+        commits.push(CommitInfo::new(hash, message, date, author));
     }
 
-    fn get_current_branch(&self) -> Option<String> {
-        match self.repo.head() {
-            Ok(head) => head.shorthand().map(|s| s.to_string()),
-            Err(_) => None,
-        }
-    }
+    Ok(CommitPage { commits, has_more })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_valid_repo() {
-        let current_dir = std::env::current_dir().unwrap();
-        let _ = GitRepositoryImpl::is_valid_repo(current_dir);
+/// Name of the checked-out branch, or `None` for detached HEAD or an unborn branch.
+pub fn current_branch(repo: &Repository) -> Option<String> {
+    if repo.head_detached().unwrap_or(false) {
+        return None;
     }
+    repo.head()
+        .ok()
+        .and_then(|head| head.shorthand().ok().map(str::to_string))
 }

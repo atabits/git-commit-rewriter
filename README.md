@@ -1,8 +1,8 @@
 # 🦀 Git Commit Rewriter
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](https://github.com/atabits/commit-rewriter)
+[![Rust](https://img.shields.io/badge/rust-1.95%2B-orange.svg)](https://www.rust-lang.org/)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)](https://github.com/atabits/git-commit-rewriter)
 
 > **Edit Git commit messages the easy way** — A beautiful, fast GUI app built with Rust
 
@@ -27,8 +27,8 @@
 ### Download & Build
 
 ```bash
-git clone https://github.com/atabits/commit-rewriter.git
-cd commit-rewriter
+git clone https://github.com/atabits/git-commit-rewriter.git
+cd git-commit-rewriter
 cargo build --release
 ```
 
@@ -69,13 +69,16 @@ commit-rewriter
 
 **🛡️ Built-in Safety**
 
-The app automatically creates backups in `refs/original/` before making changes. You can rollback anytime through the UI!
+- By default only the current branch is rewritten. Enable **All branches and tags** to also update every other branch and tag that contains the commit.
+- The full commit message is edited, including its body and trailers such as `Signed-off-by:`. Authors, dates and file contents stay the same.
+- Before moving any ref, the app saves its original value under `refs/commit-rewriter/backup/`. **Confirm** deletes the backups, **Cancel** restores the refs. If the app is closed before you decide, it asks again the next time the repository is opened.
+- Remote-tracking branches are never touched, and commit signatures (GPG/SSH) are not preserved on rewritten commits.
 
 ---
 
 ## 🛠️ For Developers
 
-Need **Rust 1.70+** and **Git** installed.
+Need **Rust 1.95+**. Git itself is not required: the app works through libgit2.
 
 ```bash
 # Development build
@@ -84,11 +87,11 @@ cargo build
 # Release build (optimized)
 cargo build --release
 
-# Run with debug logs
-RUST_LOG=debug cargo run
-
 # Run tests
 cargo test
+
+# Formatting, lints and tests (same checks as CI)
+make check
 ```
 
 ### 📦 Build for Distribution
@@ -104,15 +107,17 @@ cargo build --release --target x86_64-pc-windows-gnu
 make linux
 ```
 
-On Linux, building requires GTK 3 development headers (used for the folder picker):
+On Linux, building requires a C toolchain and pkg-config:
 
 ```bash
 # Debian / Ubuntu
-sudo apt install build-essential pkg-config libgtk-3-dev
+sudo apt install build-essential pkg-config
 
 # Arch
-sudo pacman -S base-devel pkgconf gtk3
+sudo pacman -S base-devel pkgconf
 ```
+
+The folder picker uses [xdg-desktop-portal](https://flatpak.github.io/xdg-desktop-portal/), which is available on most desktop environments.
 
 ---
 

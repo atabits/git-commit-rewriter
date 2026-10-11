@@ -1,84 +1,91 @@
-use eframe::egui;
+use crate::ui::theme;
+use eframe::egui::{self, RichText};
+
+/// Recommended maximum length of the first line.
+const SUBJECT_LIMIT: usize = 72;
+const EDITOR_MAX_HEIGHT: f32 = 180.0;
 
 pub struct EditorPanelResult {
     pub apply_clicked: bool,
+    pub reset_clicked: bool,
 }
 
+/// Message editor. `original` is the current message of the selected commit.
 pub fn render_editor_panel(
     ui: &mut egui::Ui,
     new_message: &mut String,
-    selected_index: Option<usize>,
+    original: Option<&str>,
     is_processing: bool,
 ) -> EditorPanelResult {
     let mut result = EditorPanelResult {
         apply_clicked: false,
+        reset_clicked: false,
     };
 
-    ui.vertical(|ui| {
-        ui.horizontal(|ui| {
+    let changed = original.is_some_and(|o| o.trim_end() != new_message.trim_end());
+
+    ui.horizontal(|ui| {
+        ui.label(theme::section_title("Message"));
+
+        if original.is_some() {
+            let len = new_message.lines().next().unwrap_or("").chars().count();
+            let color = if len > SUBJECT_LIMIT {
+                theme::WARNING
+            } else {
+                ui.visuals().weak_text_color()
+            };
             ui.label(
-                egui::RichText::new("✏️ New Commit Message")
-                    .size(14.0)
-                    .strong(),
+                RichText::new(format!("subject {}/{}", len, SUBJECT_LIMIT))
+                    .small()
+                    .color(color),
+            )
+            .on_hover_text("Keep the first line within 72 characters");
+        }
+    });
+
+    ui.add_space(4.0);
+
+    // long messages scroll instead of pushing the commit list away
+    egui::ScrollArea::vertical()
+        .id_salt("message_editor")
+        .max_height(EDITOR_MAX_HEIGHT)
+        .show(ui, |ui| {
+            ui.add_enabled(
+                original.is_some() && !is_processing,
+                egui::TextEdit::multiline(new_message)
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(6)
+                    .hint_text("Select a commit to edit its message")
+                    .font(egui::TextStyle::Monospace)
+                    .margin(egui::Margin::same(8)),
             );
-
-            if !new_message.trim().is_empty() {
-                let len = new_message.lines().next().unwrap_or("").len();
-                let color = if len > 72 {
-                    egui::Color32::from_rgb(255, 180, 50)
-                } else {
-                    egui::Color32::from_rgb(100, 200, 100)
-                };
-
-                ui.label(
-                    egui::RichText::new(format!("{} characters", len))
-                        .size(11.0)
-                        .color(color),
-                );
-
-                if len > 72 {
-                    ui.label(
-                        egui::RichText::new("⚠️ Recommended ≤72")
-                            .size(10.0)
-                            .color(egui::Color32::from_rgb(255, 180, 50)),
-                    );
-                }
-            }
         });
 
-        ui.add_space(2.0);
+    ui.add_space(6.0);
 
-        let text_edit = egui::TextEdit::multiline(new_message)
-            .desired_width(f32::INFINITY)
-            .desired_rows(4)
-            .hint_text("Enter new commit message...")
-            .font(egui::TextStyle::Monospace);
+    ui.horizontal(|ui| {
+        if changed {
+            ui.label(theme::muted(ui, "Unsaved changes").small());
+        }
 
-        ui.add_enabled(!is_processing, text_edit);
-
-        ui.add_space(3.0);
-
-        ui.horizontal(|ui| {
-            let apply_btn = egui::Button::new(egui::RichText::new("✅ Apply Change").size(14.0))
-                .min_size(egui::vec2(180.0, 36.0));
-
-            if ui
-                .add_enabled(
-                    !is_processing && selected_index.is_some() && !new_message.trim().is_empty(),
-                    apply_btn,
-                )
-                .clicked()
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if theme::primary_button(
+                ui,
+                "Apply change",
+                changed && !is_processing && !new_message.trim().is_empty(),
+            )
+            .on_disabled_hover_text("Edit the message of a selected commit first")
+            .clicked()
             {
                 result.apply_clicked = true;
             }
 
-            if selected_index.is_none() {
-                ui.label(
-                    egui::RichText::new("← Select a commit from the list")
-                        .size(11.0)
-                        .color(egui::Color32::GRAY)
-                        .italics(),
-                );
+            if ui
+                .add_enabled(changed && !is_processing, egui::Button::new("Reset"))
+                .on_hover_text("Restore the current message")
+                .clicked()
+            {
+                result.reset_clicked = true;
             }
         });
     });

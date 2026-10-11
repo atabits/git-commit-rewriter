@@ -83,7 +83,7 @@ info "Rust version: $(rustc --version)"
 
 # Build project
 info "Compiling project..."
-cargo build --release
+cargo build --release --locked
 
 BINARY_PATH="target/release/${PROJECT_NAME}"
 DIST_DIR="releases"

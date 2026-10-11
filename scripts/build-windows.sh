@@ -100,7 +100,7 @@ fi
 # Build project (Windows subsystem without console)
 info "Compiling project (Windows GUI, no console)..."
 # Rustflags are configured in .cargo/config.toml
-cargo build --release --target "$TARGET"
+cargo build --release --locked --target "$TARGET"
 
 BINARY_PATH="target/$TARGET/release/${PROJECT_NAME}.exe"
 EXE_NAME="${APP_NAME}.exe"

@@ -1,18 +1,14 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-mod app;
-mod background;
-mod git;
-mod models;
-mod ui;
-
-use app::CommitRewriterApp;
+use commit_rewriter::app::CommitRewriterApp;
+use commit_rewriter::ui::theme;
 use eframe::egui;
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([900.0, 700.0])
+            .with_inner_size([1000.0, 760.0])
+            .with_min_inner_size([640.0, 520.0])
             .with_title("Git Commit Rewriter"),
         ..Default::default()
     };
@@ -20,6 +16,9 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Git Commit Rewriter",
         options,
-        Box::new(|_cc| Ok(Box::new(CommitRewriterApp::default()))),
+        Box::new(|cc| {
+            theme::apply(&cc.egui_ctx);
+            Ok(Box::new(CommitRewriterApp::default()))
+        }),
     )
 }

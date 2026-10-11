@@ -1,18 +1,23 @@
 [package]
 name = "commit-rewriter"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
+rust-version = "1.95"
 authors = ["Amin Atabiev"]
 description = "Git commit message rewriter with GUI"
+repository = "https://github.com/atabits/git-commit-rewriter"
 license = "MIT"
 
 [dependencies]
-eframe = "0.28"
-egui = "0.28"
-git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2"] }
+eframe = "0.36"
+git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
 chrono = "0.4"
-rfd = "0.14"
+rfd = "0.17"
+pollster = "0.4"
 anyhow = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 opt-level = "z"     # Optimize for size
