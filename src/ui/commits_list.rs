@@ -1,5 +1,6 @@
 use crate::models::CommitInfo;
-use eframe::egui;
+use crate::ui::theme;
+use eframe::egui::{self, text::LayoutJob, Color32, FontId, Sense, TextFormat};
 
 pub struct CommitsListResult {
     pub selected_index: Option<usize>,
@@ -20,152 +21,192 @@ pub fn render_commits_list(
         load_more_clicked: false,
     };
 
+    let query = search_query.trim().to_string();
+    let filtered = filter_commits(commits, &query);
+
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("📋 Commits List").size(14.0).strong());
+        ui.label(theme::section_title("Commits"));
+        let count = if query.is_empty() {
+            commits.len().to_string()
+        } else {
+            format!("{} of {}", filtered.len(), commits.len())
+        };
+        ui.label(theme::muted(ui, count));
 
-        if !commits.is_empty() {
-            let filtered = filter_commits(commits, search_query);
-            let total = commits.len();
-            let filtered_count = filtered.len();
-
-            if !search_query.trim().is_empty() && filtered_count != total {
-                ui.label(
-                    egui::RichText::new(format!("({} of {})", filtered_count, total))
-                        .size(11.0)
-                        .color(egui::Color32::from_rgb(100, 150, 255)),
-                );
-            } else {
-                ui.label(
-                    egui::RichText::new(format!("({})", total))
-                        .size(11.0)
-                        .color(egui::Color32::GRAY),
-                );
-            }
-        }
-    });
-
-    ui.add_space(2.0);
-
-    if !commits.is_empty() {
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(search_query)
-                    .hint_text("🔍 Search by hash, message, author...")
-                    .desired_width(f32::INFINITY),
-            );
-
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if !search_query.is_empty()
                 && ui.small_button("✖").on_hover_text("Clear search").clicked()
             {
                 search_query.clear();
             }
+            ui.add(
+                egui::TextEdit::singleline(search_query)
+                    .hint_text("🔍 Search message, hash, author")
+                    .desired_width(260.0),
+            );
         });
-        ui.add_space(2.0);
-    }
+    });
 
-    let available_height = ui.available_height() - 150.0;
-    egui::ScrollArea::vertical()
-        .max_height(available_height.max(100.0))
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            if commits.is_empty() {
-                ui.centered_and_justified(|ui| {
-                    ui.label(
-                        egui::RichText::new("Select a Git repository\nto view commits")
-                            .color(egui::Color32::GRAY)
-                            .italics()
-                            .size(12.0),
+    ui.add_space(4.0);
+
+    theme::card(ui).inner_margin(4).show(ui, |ui| {
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                if commits.is_empty() {
+                    empty_state(
+                        ui,
+                        "No commits to show",
+                        "Open a Git repository to get started",
                     );
-                });
-            } else {
-                let filtered = filter_commits(commits, search_query);
+                    return;
+                }
+                if filtered.is_empty() {
+                    empty_state(
+                        ui,
+                        "Nothing found",
+                        &format!("No commits match \"{}\"", query),
+                    );
+                    return;
+                }
 
-                if filtered.is_empty() && !search_query.trim().is_empty() {
-                    ui.centered_and_justified(|ui| {
-                        ui.vertical(|ui| {
-                            ui.label(
-                                egui::RichText::new("🔍")
-                                    .size(32.0)
-                                    .color(egui::Color32::GRAY),
-                            );
-                            ui.label(
-                                egui::RichText::new("Nothing found")
-                                    .size(13.0)
-                                    .color(egui::Color32::GRAY),
-                            );
-                            ui.label(
-                                egui::RichText::new(format!("For query: \"{}\"", search_query))
-                                    .size(11.0)
-                                    .color(egui::Color32::DARK_GRAY)
-                                    .italics(),
-                            );
-                        });
-                    });
-                } else {
-                    for (original_index, commit) in filtered.iter() {
-                        let i = *original_index;
-                        let is_selected = selected_index == Some(i);
-
-                        let full_text = format!(
-                            "{} │ {} │ {}",
-                            commit.short_hash, commit.date, commit.summary
-                        );
-
-                        let response = ui.selectable_label(
-                            is_selected,
-                            highlighted_text(ui, &full_text, search_query.trim()),
-                        );
-
-                        if response.clicked() && !is_processing {
-                            result.selected_index = Some(i);
-                        }
-
-                        response.on_hover_text(format!(
-                            "Hash: {}\nAuthor: {}\nDate: {}\n\n{}",
-                            commit.hash, commit.author, commit.date, commit.message
-                        ));
-                    }
-
-                    // Only show "Load more" button if there are potentially more commits
-                    if has_more_commits {
-                        ui.add_space(3.0);
-                        ui.separator();
-                        ui.add_space(3.0);
-
-                        ui.centered_and_justified(|ui| {
-                            if loading_more {
-                                ui.horizontal(|ui| {
-                                    ui.spinner();
-                                    ui.label(
-                                        egui::RichText::new("Loading...")
-                                            .size(11.0)
-                                            .color(egui::Color32::GRAY),
-                                    );
-                                });
-                            } else {
-                                let load_more_btn = egui::Button::new(
-                                    egui::RichText::new("⬇ Load 50 more commits").size(12.0),
-                                );
-
-                                if ui
-                                    .add_enabled(!is_processing, load_more_btn)
-                                    .on_hover_text("Load next 50 commits")
-                                    .clicked()
-                                {
-                                    result.load_more_clicked = true;
-                                }
-                            }
-                        });
+                for (index, commit) in &filtered {
+                    let response = commit_row(ui, commit, selected_index == Some(*index), &query);
+                    if response.clicked() && !is_processing {
+                        result.selected_index = Some(*index);
                     }
                 }
-            }
-        });
+
+                if has_more_commits {
+                    ui.add_space(6.0);
+                    ui.vertical_centered(|ui| {
+                        if loading_more {
+                            ui.spinner();
+                        } else if ui
+                            .add_enabled(!is_processing, egui::Button::new("Load more commits"))
+                            .clicked()
+                        {
+                            result.load_more_clicked = true;
+                        }
+                    });
+                    ui.add_space(6.0);
+                }
+            });
+    });
 
     result
 }
 
+fn commit_row(
+    ui: &mut egui::Ui,
+    commit: &CommitInfo,
+    selected: bool,
+    query: &str,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), theme::ROW_HEIGHT),
+        Sense::click(),
+    );
+
+    let visuals = ui.visuals().clone();
+    let painter = ui.painter_at(rect);
+
+    if selected {
+        painter.rect_filled(rect, 6.0, visuals.selection.bg_fill);
+        painter.rect_filled(
+            egui::Rect::from_min_size(
+                rect.min + egui::vec2(0.0, 6.0),
+                egui::vec2(3.0, rect.height() - 12.0),
+            ),
+            2.0,
+            theme::ACCENT,
+        );
+    } else if response.hovered() {
+        painter.rect_filled(rect, 6.0, visuals.faint_bg_color);
+    }
+    if response.gained_focus() {
+        response.scroll_to_me(None);
+    }
+    if response.has_focus() {
+        painter.rect_stroke(
+            rect.shrink(1.0),
+            6.0,
+            egui::Stroke::new(1.5, theme::ACCENT),
+            egui::StrokeKind::Inside,
+        );
+    }
+
+    let text_color = visuals.text_color();
+    let weak_color = visuals.weak_text_color();
+    let padding = 12.0;
+    let center_y = rect.center().y;
+
+    // hash on the left
+    let hash_job = highlighted_text(
+        &commit.short_hash,
+        query,
+        FontId::monospace(13.0),
+        theme::ACCENT,
+        None,
+    );
+    let hash = painter.layout_job(hash_job);
+    let hash_pos = egui::pos2(rect.left() + padding, center_y - hash.size().y / 2.0);
+    let summary_left = hash_pos.x + hash.size().x + 14.0;
+    painter.galley(hash_pos, hash, text_color);
+
+    // author and date on the right
+    let meta_text = format!("{} · {}", commit.author, commit.date);
+    let meta_job = highlighted_text(
+        &meta_text,
+        query,
+        FontId::proportional(12.5),
+        weak_color,
+        None,
+    );
+    let meta = painter.layout_job(meta_job);
+    let meta_pos = egui::pos2(
+        rect.right() - padding - meta.size().x,
+        center_y - meta.size().y / 2.0,
+    );
+    let summary_right = meta_pos.x - 16.0;
+    painter.galley(meta_pos, meta, weak_color);
+
+    // summary in between, truncated to one line
+    let width = (summary_right - summary_left).max(40.0);
+    let summary_job = highlighted_text(
+        &commit.summary,
+        query,
+        FontId::proportional(14.0),
+        text_color,
+        Some(width),
+    );
+    let summary = painter.layout_job(summary_job);
+    painter.galley(
+        egui::pos2(summary_left, center_y - summary.size().y / 2.0),
+        summary,
+        text_color,
+    );
+
+    response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(format!(
+            "{}\n{} · {}\n\n{}",
+            commit.hash,
+            commit.author,
+            commit.date,
+            commit.message.trim_end()
+        ))
+}
+
+fn empty_state(ui: &mut egui::Ui, title: &str, subtitle: &str) {
+    ui.add_space(ui.available_height() * 0.3);
+    ui.vertical_centered(|ui| {
+        ui.label(egui::RichText::new(title).size(16.0).strong());
+        ui.label(theme::muted(ui, subtitle));
+    });
+}
+
 fn filter_commits<'a>(commits: &'a [CommitInfo], query: &str) -> Vec<(usize, &'a CommitInfo)> {
-    let query = query.trim();
     commits
         .iter()
         .enumerate()
@@ -217,21 +258,27 @@ fn find_matches(text: &str, query: &str) -> Vec<(usize, usize)> {
     matches
 }
 
-fn highlighted_text(ui: &egui::Ui, text: &str, query: &str) -> egui::text::LayoutJob {
-    let font_id = egui::FontId::monospace(11.0);
-    let normal = egui::TextFormat {
+/// Text with search matches highlighted, optionally truncated to one line of `max_width`.
+fn highlighted_text(
+    text: &str,
+    query: &str,
+    font_id: FontId,
+    color: Color32,
+    max_width: Option<f32>,
+) -> LayoutJob {
+    let normal = TextFormat {
         font_id: font_id.clone(),
-        color: ui.visuals().text_color(),
+        color,
         ..Default::default()
     };
-    let highlight = egui::TextFormat {
+    let highlight = TextFormat {
         font_id,
-        color: egui::Color32::BLACK,
-        background: egui::Color32::from_rgb(255, 255, 0),
+        color: Color32::BLACK,
+        background: Color32::from_rgb(255, 214, 102),
         ..Default::default()
     };
 
-    let mut job = egui::text::LayoutJob::default();
+    let mut job = LayoutJob::default();
     let mut last_end = 0;
     for (start, end) in find_matches(text, query) {
         job.append(&text[last_end..start], 0.0, normal.clone());
@@ -239,6 +286,15 @@ fn highlighted_text(ui: &egui::Ui, text: &str, query: &str) -> egui::text::Layou
         last_end = end;
     }
     job.append(&text[last_end..], 0.0, normal);
+
+    if let Some(max_width) = max_width {
+        job.wrap = egui::text::TextWrapping {
+            max_width,
+            max_rows: 1,
+            break_anywhere: true,
+            overflow_character: Some('…'),
+        };
+    }
     job
 }
 

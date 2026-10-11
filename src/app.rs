@@ -4,7 +4,7 @@ use crate::background::{
 };
 use crate::git::{self, RewriteScope};
 use crate::models::{CommitInfo, LogEntry, LogFilter, LogLevel, PreviewData};
-use crate::ui::{commits_list, editor_panel, logs_panel, main_window, preview_modal};
+use crate::ui::{commits_list, editor_panel, logs_panel, main_window, preview_modal, theme};
 use eframe::egui;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Sender};
@@ -33,6 +33,8 @@ pub struct CommitRewriterApp {
     pub is_processing: bool,
 
     pub message_receiver: Option<mpsc::Receiver<BackgroundMessage>>,
+    /// Result of an open folder dialog; `None` inside means it was cancelled.
+    folder_receiver: Option<mpsc::Receiver<Option<PathBuf>>>,
     initialized: bool,
 
     pub show_help: bool,
@@ -63,6 +65,7 @@ impl Default for CommitRewriterApp {
             is_processing: false,
 
             message_receiver: None,
+            folder_receiver: None,
             initialized: false,
 
             show_help: false,
@@ -74,7 +77,7 @@ impl Default for CommitRewriterApp {
         // try to use current directory if it's a git repo
         match std::env::current_dir() {
             Ok(dir) if git::is_valid_repo(&dir) => {
-                app.add_log(&format!("Opened repository: {}", dir.display()));
+                app.add_log(&format!("Opened repository {}", theme::display_path(&dir)));
                 app.set_repo(dir);
             }
             _ => app.add_log("Select a Git repository to get started"),
@@ -251,10 +254,39 @@ impl CommitRewriterApp {
         }
     }
 
+    /// Opens the folder dialog without blocking the UI thread, so the window
+    /// keeps responding to the compositor while the dialog is open.
     fn pick_repository(&mut self, ctx: &egui::Context) {
-        let Some(path) = rfd::FileDialog::new().pick_folder() else {
+        if self.folder_receiver.is_some() {
+            return;
+        }
+
+        let (tx, rx) = mpsc::channel();
+        self.folder_receiver = Some(rx);
+
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let folder = pollster::block_on(rfd::AsyncFileDialog::new().pick_folder());
+            tx.send(folder.map(|handle| handle.path().to_path_buf()))
+                .ok();
+            ctx.request_repaint();
+        });
+    }
+
+    fn process_picked_folder(&mut self, ctx: &egui::Context) {
+        let Some(receiver) = &self.folder_receiver else {
             return;
         };
+        let path = match receiver.try_recv() {
+            Ok(Some(path)) => path,
+            Ok(None) | Err(mpsc::TryRecvError::Disconnected) => {
+                self.folder_receiver = None;
+                return;
+            }
+            Err(mpsc::TryRecvError::Empty) => return,
+        };
+        self.folder_receiver = None;
+
         if !git::is_valid_repo(&path) {
             self.add_log_typed(
                 "Selected directory is not a Git repository",
@@ -267,10 +299,13 @@ impl CommitRewriterApp {
         match &self.current_branch {
             Some(branch) => self.add_log(&format!(
                 "Loading commits from {} (branch {})",
-                path.display(),
+                theme::display_path(&path),
                 branch
             )),
-            None => self.add_log(&format!("Loading commits from {}", path.display())),
+            None => self.add_log(&format!(
+                "Loading commits from {}",
+                theme::display_path(&path)
+            )),
         }
         self.load_commits_async(ctx);
     }
@@ -307,6 +342,7 @@ impl eframe::App for CommitRewriterApp {
         }
 
         self.process_background_messages();
+        self.process_picked_folder(ctx);
 
         if self.is_processing || self.loading_more {
             ctx.request_repaint();
@@ -315,6 +351,9 @@ impl eframe::App for CommitRewriterApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // the preview must be answered before anything else can change
+        let busy =
+            self.is_processing || self.preview_data.is_some() || self.folder_receiver.is_some();
 
         if let Some(preview) = &self.preview_data {
             let result = preview_modal::render_preview_modal(&ctx, preview, self.is_processing);
@@ -328,87 +367,88 @@ impl eframe::App for CommitRewriterApp {
             }
         }
 
-        egui::Panel::right("logs_panel")
-            .resizable(true)
-            .default_size(450.0)
-            .min_size(300.0)
-            .max_size(600.0)
+        egui::Panel::top("header")
+            .frame(theme::panel_frame(ui))
             .show(ui, |ui| {
-                let clear_clicked = logs_panel::render_logs_panel(
+                let result = main_window::render_main_window(
                     ui,
-                    &self.logs,
-                    &mut self.log_filter,
+                    self.repo_path.as_ref(),
+                    busy,
+                    &mut self.show_help,
+                    &mut self.modify_all_branches,
+                    self.current_branch.as_deref(),
                     self.show_progress,
                     self.progress,
                 );
-                if clear_clicked {
+
+                if result.pick_folder_clicked {
+                    self.pick_repository(&ctx);
+                }
+
+                if result.refresh_clicked {
+                    self.add_log("Refreshing commits list...");
+                    if let Some(path) = &self.repo_path {
+                        self.current_branch = git::open(path)
+                            .ok()
+                            .and_then(|repo| git::current_branch(&repo));
+                    }
+                    self.load_commits_async(&ctx);
+                }
+            });
+
+        egui::Panel::bottom("logs_panel")
+            .frame(theme::panel_frame(ui))
+            .resizable(true)
+            .default_size(150.0)
+            .min_size(90.0)
+            .max_size(400.0)
+            .show(ui, |ui| {
+                if logs_panel::render_logs_panel(ui, &self.logs, &mut self.log_filter) {
                     self.logs.clear();
                 }
             });
 
-        egui::CentralPanel::default_margins().show(ui, |ui| {
-            // the modal must be answered before anything else can change
-            let busy = self.is_processing || self.preview_data.is_some();
+        egui::Panel::bottom("editor_panel")
+            .frame(theme::panel_frame(ui))
+            .show(ui, |ui| {
+                let original = self
+                    .selected_index
+                    .and_then(|i| self.commits.get(i))
+                    .map(|c| c.message.as_str());
+                let result =
+                    editor_panel::render_editor_panel(ui, &mut self.new_message, original, busy);
 
-            let main_result = main_window::render_main_window(
-                ui,
-                self.repo_path.as_ref(),
-                self.commits.len(),
-                busy,
-                &mut self.show_help,
-                &mut self.modify_all_branches,
-                self.current_branch.as_deref(),
-            );
-
-            if main_result.pick_folder_clicked {
-                self.pick_repository(&ctx);
-            }
-
-            if main_result.refresh_clicked {
-                self.add_log("Refreshing commits list...");
-                if let Some(path) = &self.repo_path {
-                    self.current_branch = git::open(path)
-                        .ok()
-                        .and_then(|repo| git::current_branch(&repo));
+                if result.reset_clicked {
+                    if let Some(original) = original {
+                        self.new_message = original.trim_end().to_string();
+                    }
                 }
-                self.load_commits_async(&ctx);
-            }
+                if result.apply_clicked {
+                    self.apply_change(&ctx);
+                }
+            });
 
-            let commits_result = commits_list::render_commits_list(
-                ui,
-                &self.commits,
-                self.selected_index,
-                &mut self.search_query,
-                busy,
-                self.loading_more,
-                self.has_more_commits,
-            );
+        egui::CentralPanel::default_margins()
+            .frame(egui::Frame::central_panel(ui.style()).inner_margin(theme::PANEL_MARGIN))
+            .show(ui, |ui| {
+                let result = commits_list::render_commits_list(
+                    ui,
+                    &self.commits,
+                    self.selected_index,
+                    &mut self.search_query,
+                    busy,
+                    self.loading_more,
+                    self.has_more_commits,
+                );
 
-            if let Some(index) = commits_result.selected_index {
-                if let Some(commit) = self.commits.get(index) {
-                    self.selected_index = Some(index);
+                if let Some(commit) = result.selected_index.and_then(|i| self.commits.get(i)) {
                     self.new_message = commit.message.trim_end().to_string();
-                    let log = format!("Selected commit {} - {}", commit.short_hash, commit.summary);
-                    self.add_log(&log);
+                    self.selected_index = result.selected_index;
                 }
-            }
 
-            if commits_result.load_more_clicked {
-                self.load_more_commits_async(&ctx);
-            }
-
-            ui.separator();
-
-            let editor_result = editor_panel::render_editor_panel(
-                ui,
-                &mut self.new_message,
-                self.selected_index.is_some(),
-                busy,
-            );
-
-            if editor_result.apply_clicked {
-                self.apply_change(&ctx);
-            }
-        });
+                if result.load_more_clicked {
+                    self.load_more_commits_async(&ctx);
+                }
+            });
     }
 }

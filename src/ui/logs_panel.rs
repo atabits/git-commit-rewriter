@@ -1,103 +1,46 @@
 use crate::models::{LogEntry, LogFilter};
-use eframe::egui;
+use crate::ui::theme;
+use eframe::egui::{self, RichText};
 
-pub fn render_logs_panel(
-    ui: &mut egui::Ui,
-    logs: &[LogEntry],
-    log_filter: &mut LogFilter,
-    show_progress: bool,
-    progress: f32,
-) -> bool {
+/// Activity log. Returns `true` when Clear was clicked.
+pub fn render_logs_panel(ui: &mut egui::Ui, logs: &[LogEntry], log_filter: &mut LogFilter) -> bool {
     let mut clear_clicked = false;
 
-    ui.vertical(|ui| {
-        ui.horizontal(|ui| {
-            ui.heading(egui::RichText::new("📝 Logs").size(18.0).strong());
+    ui.horizontal(|ui| {
+        ui.label(theme::section_title("Activity"));
+        ui.label(theme::muted(ui, logs.len().to_string()));
 
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .add_enabled(!logs.is_empty(), egui::Button::new("🗑️ Clear"))
-                    .clicked()
-                {
-                    clear_clicked = true;
-                }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui
+                .add_enabled(!logs.is_empty(), egui::Button::new("Clear").small())
+                .clicked()
+            {
+                clear_clicked = true;
+            }
 
-                egui::ComboBox::from_id_salt("log_filter")
-                    .selected_text(log_filter.name())
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(log_filter, LogFilter::All, LogFilter::All.name());
-                        ui.selectable_value(
-                            log_filter,
-                            LogFilter::Important,
-                            LogFilter::Important.name(),
-                        );
-                        ui.selectable_value(
-                            log_filter,
-                            LogFilter::ErrorsOnly,
-                            LogFilter::ErrorsOnly.name(),
-                        );
-                    });
-            });
-        });
-
-        ui.add_space(2.0);
-
-        ui.label(
-            egui::RichText::new(format!("📊 Entries: {}", logs.len()))
-                .small()
-                .color(egui::Color32::GRAY),
-        );
-
-        ui.separator();
-
-        if show_progress {
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label("⏳");
-                    ui.label(
-                        egui::RichText::new("Executing operation...")
-                            .color(egui::Color32::from_rgb(100, 150, 255)),
-                    );
+            egui::ComboBox::from_id_salt("log_filter")
+                .selected_text(log_filter.name())
+                .width(110.0)
+                .show_ui(ui, |ui| {
+                    for filter in [LogFilter::All, LogFilter::Important, LogFilter::ErrorsOnly] {
+                        ui.selectable_value(log_filter, filter, filter.name());
+                    }
                 });
+        });
+    });
 
-                let progress_bar = egui::ProgressBar::new(progress)
-                    .show_percentage()
-                    .animate(true);
-                ui.add(progress_bar);
-            });
-            ui.add_space(3.0);
-            ui.separator();
-        }
+    ui.add_space(4.0);
 
-        let remaining_height = ui.available_height();
+    theme::card(ui).inner_margin(6).show(ui, |ui| {
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
-            .auto_shrink([false, true])
-            .max_height(remaining_height.min(800.0))
+            .auto_shrink([false, false])
             .show(ui, |ui| {
                 if logs.is_empty() {
-                    ui.add_space(ui.available_height() * 0.1);
-                    ui.centered_and_justified(|ui| {
-                        ui.vertical(|ui| {
-                            ui.label(
-                                egui::RichText::new("📝")
-                                    .size(48.0)
-                                    .color(egui::Color32::from_rgb(100, 100, 120)),
-                            );
-                            ui.label(
-                                egui::RichText::new("Logs will appear here")
-                                    .size(13.0)
-                                    .color(egui::Color32::GRAY)
-                                    .italics(),
-                            );
-                        });
-                    });
-                } else {
-                    for entry in logs {
-                        if log_filter.should_show(&entry.level) {
-                            render_log_entry(ui, entry);
-                        }
-                    }
+                    ui.label(theme::muted(ui, "Nothing here yet").italics());
+                }
+                for entry in logs.iter().filter(|e| log_filter.should_show(&e.level)) {
+                    render_log_entry(ui, entry);
                 }
             });
     });
@@ -106,23 +49,13 @@ pub fn render_logs_panel(
 }
 
 fn render_log_entry(ui: &mut egui::Ui, entry: &LogEntry) {
-    let icon = entry.level.icon();
     let (r, g, b) = entry.level.color();
     let color = egui::Color32::from_rgb(r, g, b);
 
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(icon).size(12.0));
-        ui.label(
-            egui::RichText::new(&entry.timestamp)
-                .monospace()
-                .size(10.0)
-                .color(egui::Color32::GRAY),
-        );
-        ui.label(
-            egui::RichText::new(&entry.message)
-                .monospace()
-                .size(10.5)
-                .color(color),
-        );
+    ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+        ui.label(RichText::new(entry.level.icon()).color(color).monospace());
+        ui.label(theme::muted(ui, &entry.timestamp).monospace().size(12.0));
+        ui.add(egui::Label::new(RichText::new(&entry.message).size(13.0).color(color)).wrap());
     });
 }

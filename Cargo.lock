@@ -662,6 +662,7 @@ dependencies = [
  "chrono",
  "eframe",
  "git2",
+ "pollster 0.4.0",
  "rfd",
  "tempfile",
 ]

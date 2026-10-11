@@ -9,19 +9,19 @@ pub enum LogLevel {
 impl LogLevel {
     pub fn icon(&self) -> &'static str {
         match self {
-            LogLevel::Info => "📝",
-            LogLevel::Success => "✅",
-            LogLevel::Warning => "⚠️",
-            LogLevel::Error => "❌",
+            LogLevel::Info => "•",
+            LogLevel::Success => "✔",
+            LogLevel::Warning => "⚠",
+            LogLevel::Error => "✖",
         }
     }
 
     pub fn color(&self) -> (u8, u8, u8) {
         match self {
-            LogLevel::Info => (150, 150, 160),
-            LogLevel::Success => (80, 200, 120),
-            LogLevel::Warning => (255, 180, 50),
-            LogLevel::Error => (255, 100, 100),
+            LogLevel::Info => (140, 142, 150),
+            LogLevel::Success => (80, 180, 110),
+            LogLevel::Warning => (230, 170, 50),
+            LogLevel::Error => (220, 90, 90),
         }
     }
 }
@@ -82,10 +82,10 @@ mod tests {
 
     #[test]
     fn test_log_level_icon() {
-        assert_eq!(LogLevel::Info.icon(), "📝");
-        assert_eq!(LogLevel::Success.icon(), "✅");
-        assert_eq!(LogLevel::Warning.icon(), "⚠️");
-        assert_eq!(LogLevel::Error.icon(), "❌");
+        assert_eq!(LogLevel::Info.icon(), "•");
+        assert_eq!(LogLevel::Success.icon(), "✔");
+        assert_eq!(LogLevel::Warning.icon(), "⚠");
+        assert_eq!(LogLevel::Error.icon(), "✖");
     }
 
     #[test]
