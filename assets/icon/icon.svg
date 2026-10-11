@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34363c"/>
+      <stop offset="1" stop-color="#1c1d21"/>
+    </linearGradient>
+    <linearGradient id="accent" gradientUnits="userSpaceOnUse" x1="250" y1="250" x2="700" y2="780">
+      <stop offset="0" stop-color="#ffa45c"/>
+      <stop offset="1" stop-color="#e8722a"/>
+    </linearGradient>
+  </defs>
+  <!-- macOS-style safe area: 824px tile centered with 100px margin -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="184.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+
+  <!-- commit graph -->
+  <g stroke="url(#accent)" stroke-width="44" stroke-linecap="round" fill="none">
+    <line x1="360" y1="250" x2="360" y2="774"/>
+    <path d="M360 640 C 360 520, 560 520, 560 410"/>
+  </g>
+  <g fill="#1c1d21" stroke="url(#accent)" stroke-width="40">
+    <circle cx="360" cy="300" r="56"/>
+    <circle cx="360" cy="724" r="56"/>
+    <circle cx="560" cy="360" r="56"/>
+  </g>
+
+  <!-- pencil -->
+  <g transform="translate(640 640) rotate(45)">
+    <rect x="-46" y="-210" width="92" height="300" rx="14" fill="#f2f3f5"/>
+    <!-- square bottom edge so the wooden cone joins without notches -->
+    <rect x="-46" y="40" width="92" height="51" fill="#f2f3f5"/>
+    <rect x="-46" y="-210" width="92" height="56" rx="14" fill="#ffa45c"/>
+    <rect x="-46" y="-162" width="92" height="16" fill="#c9cbd1"/>
+    <path d="M-46 90 L46 90 L0 170 Z" fill="#e7d3bd"/>
+    <path d="M-17 140 L17 140 L0 170 Z" fill="#8d919b"/>
+  </g>
+</svg>
