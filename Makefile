@@ -8,7 +8,6 @@
 
 # Variables
 PROJECT = commit-rewriter
-VERSION = 2.0.0
 BUILD_DIR = target/release
 DIST_DIR = releases
 
@@ -83,7 +82,7 @@ fmt: ## Format code
 
 # Linter check
 clippy: ## Run clippy
-	cargo clippy -- -D warnings
+	cargo clippy --all-targets -- -D warnings
 
 # Full check before commit
 check: fmt clippy test ## Formatting, linter and tests

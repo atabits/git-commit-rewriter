@@ -80,7 +80,7 @@ info "Building for macOS ($ARCH_NAME)..."
 
 # Build project
 info "Compiling project..."
-cargo build --release --target "$TARGET"
+cargo build --release --locked --target "$TARGET"
 
 BINARY_PATH="target/$TARGET/release/${PROJECT_NAME}"
 APP_DIR="${DIST_DIR}/${APP_NAME}.app"

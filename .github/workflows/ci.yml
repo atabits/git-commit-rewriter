@@ -27,6 +27,30 @@ jobs:
       - name: Check formatting
         run: cargo fmt -- --check
 
+  # Linter
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
   # Compilation and tests on Linux
   test:
     name: Test (Linux)
@@ -38,7 +62,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libgtk-3-dev
+          sudo apt-get install -y build-essential pkg-config
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -47,10 +71,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Check code compiles
-        run: cargo check --all-targets
+        run: cargo check --all-targets --locked
 
       - name: Run tests
-        run: cargo test --verbose --all-targets
+        run: cargo test --all-targets --locked
 
   # Windows cross-compilation check (same toolchain as release builds)
   windows:
@@ -74,4 +98,4 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build for Windows
-        run: cargo build --release --target x86_64-pc-windows-gnu
+        run: cargo build --release --locked --target x86_64-pc-windows-gnu
