@@ -9,6 +9,12 @@ fn main() -> Result<(), eframe::Error> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1000.0, 760.0])
             .with_min_inner_size([640.0, 520.0])
+            // matches commit-rewriter.desktop, so Wayland shows its icon
+            .with_app_id("commit-rewriter")
+            .with_icon(
+                eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon/icon-256.png"))
+                    .expect("bundled icon is a valid PNG"),
+            )
             .with_title("Git Commit Rewriter"),
         ..Default::default()
     };

@@ -107,6 +107,18 @@ fi
 cp "$BINARY_PATH" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
 
+# Create app icon from the pre-rendered 1024px PNG
+info "Creating app icon..."
+ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"
+mkdir -p "$ICONSET_DIR"
+ICON_SRC="assets/icon/icon-macos-1024.png"
+for size in 16 32 128 256 512; do
+    sips -z $size $size "$ICON_SRC" --out "$ICONSET_DIR/icon_${size}x${size}.png" > /dev/null
+    sips -z $((size * 2)) $((size * 2)) "$ICON_SRC" --out "$ICONSET_DIR/icon_${size}x${size}@2x.png" > /dev/null
+done
+iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/AppIcon.icns"
+rm -rf "$(dirname "$ICONSET_DIR")"
+
 # Create Info.plist
 info "Creating Info.plist..."
 cat > "${CONTENTS_DIR}/Info.plist" << EOF
@@ -118,6 +130,8 @@ cat > "${CONTENTS_DIR}/Info.plist" << EOF
     <string>en</string>
     <key>CFBundleExecutable</key>
     <string>${APP_NAME}</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>${BUNDLE_ID}</string>
     <key>CFBundleInfoDictionaryVersion</key>

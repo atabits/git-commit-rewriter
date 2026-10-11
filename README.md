@@ -127,6 +127,8 @@ sudo apt install build-essential pkg-config
 sudo pacman -S base-devel pkgconf
 ```
 
+App icons are generated from `assets/icon/icon.svg` with `./scripts/generate-icons.sh` (needs librsvg and ImageMagick); the results are committed, so regular builds don't need these tools.
+
 The folder picker uses [xdg-desktop-portal](https://flatpak.github.io/xdg-desktop-portal/), which is available on most desktop environments.
 
 ---
