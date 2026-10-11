@@ -27,9 +27,11 @@
   <!-- pencil -->
   <g transform="translate(640 640) rotate(45)">
     <rect x="-46" y="-210" width="92" height="300" rx="14" fill="#f2f3f5"/>
+    <!-- square bottom edge so the wooden cone joins without notches -->
+    <rect x="-46" y="40" width="92" height="51" fill="#f2f3f5"/>
     <rect x="-46" y="-210" width="92" height="56" rx="14" fill="#ffa45c"/>
     <rect x="-46" y="-162" width="92" height="16" fill="#c9cbd1"/>
     <path d="M-46 90 L46 90 L0 170 Z" fill="#e7d3bd"/>
-    <path d="M-17 140 L17 140 L0 170 Z" fill="#2a2b30"/>
+    <path d="M-17 140 L17 140 L0 170 Z" fill="#8d919b"/>
   </g>
 </svg>
