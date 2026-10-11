@@ -24,7 +24,17 @@
 
 ## 🚀 Quick Start
 
-### Download & Build
+### Download
+
+Prebuilt binaries are attached to every [release](https://github.com/atabits/git-commit-rewriter/releases/latest):
+
+| Platform | File |
+|---|---|
+| macOS (Apple Silicon / Intel) | `commit-rewriter-<version>-macos-arm64.dmg` / `-macos-x86_64.dmg` |
+| Windows | `commit-rewriter-<version>-windows-portable.zip` |
+| Linux (x86_64 / ARM64) | `commit-rewriter-<version>-linux-<arch>.AppImage` or `.tar.gz` |
+
+### Build from Source
 
 ```bash
 git clone https://github.com/atabits/git-commit-rewriter.git
